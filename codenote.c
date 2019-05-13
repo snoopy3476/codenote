@@ -65,43 +65,57 @@ int main(int argc, char* argv[])
 
 	
 	char name_buf[BUF_LEN + EXT_LEN] = {0};
+	size_t name_len;
 	unsigned char key_buf[KEY_BUF_LEN] = {0};
 	size_t key_len;
 
 
+
+
+	// name input
 	if (file_name == NULL)
 	{
 	    printf("Note name: ");
 	    fgets(name_buf, BUF_LEN, stdin);
-	    char * last_element = &name_buf[strnlen(name_buf, BUF_LEN) - 1];
-	    if (*last_element == '\n')
-		*last_element = '\0';
-
-	    //file_name = name_buf;
 	}
 	else
 	{
 	    strncpy(name_buf, file_name, BUF_LEN);
 	}
+	
+	name_len = strnlen(name_buf, BUF_LEN);
+	
+	char * last_element = &name_buf[name_len - 1];
+	if (*last_element == '\n')
+	{
+	    *last_element = '\0';
+	    name_len--;
+	}
 
 	// append cnote extension to filename
-	strncat(name_buf, EXT, EXT_LEN);
+	if (strstr(name_buf, EXT) != (name_buf + name_len - EXT_LEN))
+	    strncat(name_buf, EXT, EXT_LEN);
+	    
 	file_name = name_buf;
 
 
-	    
+
+
+	// key input
 	if (key == NULL)
 	{
-	    key_len = get_password_stdin("Key", key_buf, KEY_BUF_LEN, (workmode == 1));
+	    key_len = get_password_stdin("Key", key_buf, KEY_BUF_LEN, (workmode == ENC));
 	    key = key_buf;
 	}
 	else
 	{
 	    key_len = strnlen((const char *)key, KEY_BUF_LEN);
 	}
+
+
+
+
 	
-
-
 
 	// encrypt mode
 	if (workmode == ENC)
@@ -120,7 +134,7 @@ int main(int argc, char* argv[])
 		data_len = strnlen((const char *)data, KEY_BUF_LEN);
 	    }
 	    
-	    write_note(file_name, key_buf, key_len, data, data_len);
+	    write_note(file_name, key, key_len, data, data_len);
 
 
 	    return 0;
@@ -130,7 +144,7 @@ int main(int argc, char* argv[])
 	// decrypt mode
 	else if (workmode == DEC)
 	{
-	    read_note(file_name, key_buf, key_len);
+	    read_note(file_name, key, key_len);
 	}
     }
 
@@ -150,8 +164,8 @@ size_t get_password_stdin(char * prompt, unsigned char * buf_out, size_t buf_len
     size_t buf_len_cur = 0,
 	buf_len_tmp[2] = {0};
     unsigned char * buf_tmp[2];
-    buf_tmp[0] = (unsigned char *) malloc(sizeof(unsigned char) * buf_len);
-    buf_tmp[1] = (unsigned char *) malloc(sizeof(unsigned char) * buf_len);
+    buf_tmp[0] = (unsigned char *) malloc(sizeof(unsigned char) * (buf_len+1));
+    buf_tmp[1] = (unsigned char *) malloc(sizeof(unsigned char) * (buf_len+1));
 
     
     while( 1 )
@@ -189,7 +203,7 @@ size_t get_password_stdin(char * prompt, unsigned char * buf_out, size_t buf_len
 
     // copy input to buf
     buf_len_cur = buf_len_tmp[0];
-    memcpy(buf_out, buf_tmp[0], buf_len_cur);
+    memcpy(buf_out, buf_tmp[0], buf_len_cur + 1);
 
     
     free(buf_tmp[0]);
