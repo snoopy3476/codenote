@@ -1,1 +1,6 @@
+codenote
+codenote.exe
+*.o
+*.cnote
 salt.h
+salt.h_bak

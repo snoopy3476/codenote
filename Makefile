@@ -18,6 +18,9 @@ codenote.o: codenote.c noteio.h
 noteio.o: noteio.c noteio.h salt.h
 	$(CC) $(CFLAGS) -c $< -o $@ $(LIBS)
 
+salt.h:
+	./gen-salt-header.sh
+
 
 static-linux64:
 	$(CC) $(SRC) /usr/lib/x86_64-linux-gnu/libgcrypt.a /usr/lib/x86_64-linux-gnu/libgpg-error.a -o $(TARGET)
