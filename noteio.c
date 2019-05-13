@@ -1,4 +1,5 @@
 #include "noteio.h"
+#include "salt.h"
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -87,7 +88,7 @@ size_t encrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_
     gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
     gcry_cipher_open(&handle, GCRY_CIPHER, GCRY_MODE, 0);
 
-    gcry_kdf_derive(key_orig, key_orig_len, GCRY_KDF_PBKDF2, GCRY_CIPHER, KEY_SALT, strnlen(KEY_SALT, 1024), 16, key_len, key_final);
+    gcry_kdf_derive(key_orig, key_orig_len, GCRY_KDF_PBKDF2, GCRY_CIPHER, KEY_SALT, KEY_SALT_LEN, 16, key_len, key_final);
     gcry_cipher_setkey(handle, key_final, key_len);
 
     gcry_cipher_encrypt(handle, *data, encdata_size, NULL, 0);
@@ -120,7 +121,7 @@ size_t decrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_
     gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
     gcry_cipher_open(&handle, GCRY_CIPHER, GCRY_MODE, 0);
 
-    gcry_kdf_derive(key_orig, key_orig_len, GCRY_KDF_PBKDF2, GCRY_CIPHER, KEY_SALT, strnlen(KEY_SALT, 1024), 16, key_len, key_final);
+    gcry_kdf_derive(key_orig, key_orig_len, GCRY_KDF_PBKDF2, GCRY_CIPHER, KEY_SALT, KEY_SALT_LEN, 16, key_len, key_final);
     gcry_cipher_setkey(handle, key_final, key_len);
 
     gcry_cipher_decrypt(handle, *data, data_size, NULL, 0);
