@@ -94,7 +94,7 @@ int main(int argc, char* argv[])
 
 	// append cnote extension to filename
 	if (strstr(name_buf, EXT) != (name_buf + name_len - EXT_LEN))
-	    strncat(name_buf, EXT, EXT_LEN);
+	    strcat(name_buf, EXT);
 	    
 	file_name = name_buf;
 

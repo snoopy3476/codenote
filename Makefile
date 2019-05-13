@@ -2,6 +2,7 @@ CC=gcc
 MAKE=make
 
 TARGET=codenote
+override CFLAGS += -Wall
 
 SRC:=$(wildcard *.c)
 OBJS:=$(SRC:.c=.o)
