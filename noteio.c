@@ -92,10 +92,12 @@ size_t encrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_
 
     gcry_cipher_encrypt(handle, *data, encdata_size, NULL, 0);
 
+    /*
     size_t index;
     for (index = 0; index < data_size; index++)
         printf("%c", (*data)[index]);
     printf("\n");
+    */
 
     gcry_cipher_close(handle);
     

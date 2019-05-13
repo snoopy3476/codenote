@@ -6,13 +6,16 @@
 
 #define KEY_BUF_LEN 1 << 15
 #define BUF_LEN 1024
+#define EXT ".cnote"
+#define EXT_LEN 6
 #define HIDE_KEY_STR "                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    "
 
 
-typedef enum workmode_t {NONE, ENCODE, DECODE} workmode_t;
+typedef enum workmode_t {NONE, ENC, DEC} workmode_t;
 
-size_t get_password_stdin(char * prompt, unsigned char * buf, size_t buf_len);
-
+size_t get_password_stdin(char * prompt, unsigned char * buf_out, size_t buf_len, int is_retype);
+size_t get_stdin(unsigned char * buf, size_t buf_len);
+int datncmp(unsigned char * buf1, unsigned char * buf2, size_t buf_len);
 
 
 
@@ -36,13 +39,13 @@ int main(int argc, char* argv[])
     // arg : decrypt mode
     else
     {
-	workmode_t workmode = 0;
-	if (strncmp(argv[1], "encode", BUF_LEN) == 0)
-	    workmode = 1;
-	else if (strncmp(argv[1], "decode", BUF_LEN) == 0)
-	    workmode = 2;
+	workmode_t workmode = NONE;
+	if (strncmp(argv[1], "enc", BUF_LEN) == 0)
+	    workmode = ENC;
+	else if (strncmp(argv[1], "dec", BUF_LEN) == 0)
+	    workmode = DEC;
 
-	if ( workmode == 0 )
+	if ( workmode == NONE )
 	    return 1;
 
 
@@ -61,7 +64,7 @@ int main(int argc, char* argv[])
 	    data = (unsigned char *) argv[4];
 
 	
-	char name_buf[BUF_LEN] = {0};
+	char name_buf[BUF_LEN + EXT_LEN] = {0};
 	unsigned char key_buf[KEY_BUF_LEN] = {0};
 	size_t key_len;
 
@@ -74,26 +77,34 @@ int main(int argc, char* argv[])
 	    if (*last_element == '\n')
 		*last_element = '\0';
 
-	    file_name = name_buf;
+	    //file_name = name_buf;
 	}
+	else
+	{
+	    strncpy(name_buf, file_name, BUF_LEN);
+	}
+
+	// append cnote extension to filename
+	strncat(name_buf, EXT, EXT_LEN);
+	file_name = name_buf;
 
 
 	    
 	if (key == NULL)
 	{
-	    key_len = get_password_stdin("Key: ", key_buf, KEY_BUF_LEN);
+	    key_len = get_password_stdin("Key", key_buf, KEY_BUF_LEN, (workmode == 1));
 	    key = key_buf;
 	}
 	else
 	{
 	    key_len = strnlen((const char *)key, KEY_BUF_LEN);
 	}
-
+	
 
 
 
 	// encrypt mode
-	if (workmode == 1)
+	if (workmode == ENC)
 	{
 	    unsigned char data_buf[KEY_BUF_LEN] = {0};
 	    size_t data_len;
@@ -102,7 +113,7 @@ int main(int argc, char* argv[])
 	    {
 		data = data_buf;
 		
-		data_len = get_password_stdin("Data: ", data, KEY_BUF_LEN);
+		data_len = get_password_stdin("Data", data, KEY_BUF_LEN, 0);
 	    }
 	    else
 	    {
@@ -117,7 +128,7 @@ int main(int argc, char* argv[])
 
 
 	// decrypt mode
-	else if (workmode == 2)
+	else if (workmode == DEC)
 	{
 	    read_note(file_name, key_buf, key_len);
 	}
@@ -132,14 +143,68 @@ int main(int argc, char* argv[])
 }
 
 
-size_t get_password_stdin(char * prompt, unsigned char * buf, size_t buf_len)
+size_t get_password_stdin(char * prompt, unsigned char * buf_out, size_t buf_len, int is_retype)
 {
-    printf("%s", prompt);
 
+    char * password_mismatch = "";
+    size_t buf_len_cur = 0,
+	buf_len_tmp[2] = {0};
+    unsigned char * buf_tmp[2];
+    buf_tmp[0] = (unsigned char *) malloc(sizeof(unsigned char) * buf_len);
+    buf_tmp[1] = (unsigned char *) malloc(sizeof(unsigned char) * buf_len);
+
+    
+    while( 1 )
+    {
+	buf_len_tmp[0] = 0;
+	buf_len_tmp[1] = 0;
+
+	// first input
+	printf("%s%s: ", password_mismatch, prompt);
+	buf_len_tmp[0] = get_stdin(buf_tmp[0], buf_len);
+	printf("\r%.*s\x1B[A\n", (int) (buf_len_tmp[0] + 2 + strnlen(prompt, BUF_LEN) + strnlen(password_mismatch, BUF_LEN)), HIDE_KEY_STR);
+
+	// no retype and recheck if set
+	if (!is_retype)
+	{
+	    buf_len_cur = buf_len_tmp[0];
+	    break;
+	}
+	
+	// second input
+	printf("Retype %s: ", prompt);
+	buf_len_tmp[1] = get_stdin(buf_tmp[1], buf_len);
+	printf("\r%.*s\x1B[A\n", (int) (buf_len_tmp[1] + 9 + strnlen(prompt, BUF_LEN)), HIDE_KEY_STR);
+
+	if (buf_len_tmp[0] == buf_len_tmp[1] &&
+	    datncmp(buf_tmp[0], buf_tmp[1], buf_len_tmp[1]) == 0)
+	    break;
+
+	password_mismatch = "[MISMATCH] ";
+
+	if (!feof(stdin))
+	    return 0;
+    }
+
+
+    // copy input to buf
+    buf_len_cur = buf_len_tmp[0];
+    memcpy(buf_out, buf_tmp[0], buf_len_cur);
+
+    
+    free(buf_tmp[0]);
+    free(buf_tmp[1]);
+
+    return buf_len_cur;
+}
+
+size_t get_stdin(unsigned char * buf, size_t buf_len)
+{
     
     size_t buf_len_cur = 0;
     char char_buf;
     int get_next_char = 1;
+    
     
     while (get_next_char && (buf_len_cur < buf_len))
     {
@@ -158,7 +223,14 @@ size_t get_password_stdin(char * prompt, unsigned char * buf, size_t buf_len)
 	}
     }
 
-    printf("\r%.*s\r", (int) (buf_len_cur + strnlen(prompt, BUF_LEN)), HIDE_KEY_STR);
-
     return buf_len_cur;
+}
+
+int datncmp(unsigned char * buf1, unsigned char * buf2, size_t buf_len)
+{
+    for (size_t i = 0; i < buf_len; i++)
+	if (buf1[i] - buf2[i])
+	    return buf1[i] - buf2[i];
+
+    return 0;
 }
