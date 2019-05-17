@@ -1,4 +1,5 @@
 #include "noteio.h"
+#include "ansiseq.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,9 +12,8 @@
 #define HKS_BASE "                                                                                                    "
 #define HIDE_KEY_STR HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE
 
-#define new_page() printf("\033[1;1H\033[2J")
-#define clear(line_from) printf("\033[%dH\033[J", line_from)
-#define cursor_move(x, y) printf("\033[%d;%dH", (x), (y))
+#define new_page() printf(MOVE_CURSOR NEWPAGE, 1, 1)
+#define clear(offset_x, offset_y) printf(MOVE_CURSOR CLEAR, (offset_y)+1, (offset_x)+1)
 
 
 typedef enum workmode_t {NONE, ENC, DEC} workmode_t;
@@ -28,162 +28,133 @@ int main(int argc, char* argv[])
 {
     new_page();
 
-    // no arg : encrypt mode
-    if (argc <= 1)
-    {
+    char * file_name = NULL;
+    char * name_buf
+	= (char *) malloc(sizeof(char) * BUF_LEN);
+    size_t name_len;
 	
-	char argv_buf[1024];
-    
-	printf("Note name to write: ");
-	fgets(argv_buf, BUF_LEN, stdin);
-	char * last_element = &argv_buf[strnlen(argv_buf, BUF_LEN) - 1];
-	if (*last_element == '\n')
-	    *last_element = '\0';
-    }
+    unsigned char * key = NULL;
+    unsigned char * key_buf
+	= (unsigned char *) malloc(sizeof(char) * BUF_LEN);
+    size_t key_len;
+	
+    unsigned char * data = NULL;
+    unsigned char * data_buf
+	= (unsigned char *) malloc(sizeof(char) * BUF_LEN);
+    size_t data_len;
 
-    // arg : decrypt mode
+
+
+	
+    workmode_t workmode = NONE;
+    if (argc > 1 && strncmp(argv[1], "-e", BUF_LEN) == 0)
+    {
+	workmode = ENC;
+	    
+	if (argc > 2)
+	    file_name = argv[2];
+	if (argc > 3)
+	    key = (unsigned char *) argv[3];
+	if (argc > 4)
+	    data = (unsigned char *) argv[4];
+    }
     else
     {
-	char * file_name = NULL;
-	char * name_buf
-	    = (char *) malloc(sizeof(char) * BUF_LEN);
-	size_t name_len;
-	
-	unsigned char * key = NULL;
-	unsigned char * key_buf
-	    = (unsigned char *) malloc(sizeof(char) * BUF_LEN);
-	size_t key_len;
-	
-	unsigned char * data = NULL;
-	unsigned char * data_buf
-	    = (unsigned char *) malloc(sizeof(char) * BUF_LEN);
-	size_t data_len;
-
-
-
-	
-	workmode_t workmode = NONE;
-	if (strncmp(argv[1], "-e", BUF_LEN) == 0)
-	{
-	    workmode = ENC;
+	workmode = DEC;
 	    
-	    if (argc >= 3)
-		file_name = argv[2];
-	    if (argc >= 4)
-		key = (unsigned char *) argv[3];
-	    if (argc >= 5)
-		data = (unsigned char *) argv[4];
-	}
-	else
-	{
-	    workmode = DEC;
+	if (argc > 1)
+	    file_name = argv[1];
+	if (argc > 2)
+	    key = (unsigned char *) argv[2];
+	if (argc > 3)
+	    data = (unsigned char *) argv[3];
+    }
+
+	
+
+
+
+    // name input
+    if (file_name == NULL)
+    {
+	printf("Note name: ");
+	fgets(name_buf, BUF_LEN, stdin);
+    }
+    else
+    {
+	strncpy(name_buf, file_name, BUF_LEN);
+    }
+	
+    name_len = strnlen(name_buf, BUF_LEN);
+	
+    char * last_element = &name_buf[name_len - 1];
+    if (*last_element == '\n')
+    {
+	*last_element = '\0';
+	name_len--;
+    }
+
+    // append cnote extension to filename
+    if (strstr(name_buf, EXT) != (name_buf + name_len - EXT_LEN))
+	strcat(name_buf, EXT);
 	    
-	    if (argc >= 2)
-		file_name = argv[1];
-	    if (argc >= 3)
-		key = (unsigned char *) argv[2];
-	    if (argc >= 4)
-		data = (unsigned char *) argv[3];
-	}
-
-	
-
-
-	
-
-    
-	
-
-	
+    file_name = name_buf;
 
 
 
 
-	// name input
-	if (file_name == NULL)
-	{
-	    printf("Note name: ");
-	    fgets(name_buf, BUF_LEN, stdin);
-	}
-	else
-	{
-	    strncpy(name_buf, file_name, BUF_LEN);
-	}
-	
-	name_len = strnlen(name_buf, BUF_LEN);
-	
-	char * last_element = &name_buf[name_len - 1];
-	if (*last_element == '\n')
-	{
-	    *last_element = '\0';
-	    name_len--;
-	}
-
-	// append cnote extension to filename
-	if (strstr(name_buf, EXT) != (name_buf + name_len - EXT_LEN))
-	    strcat(name_buf, EXT);
-	    
-	file_name = name_buf;
-
-
-
-
-	// key input
-	if (key == NULL)
-	{
-	    key_len = get_input(file_name, "Key", key_buf, KEY_BUF_LEN, (workmode == ENC));
-	    key = key_buf;
-	}
-	else
-	{
-	    key_len = strnlen((const char *)key, KEY_BUF_LEN);
-	}
-
-
-
-
-	
-
-	// encrypt mode
-	if (workmode == ENC)
-	{
-	    if (data == NULL)
-	    {
-		data = data_buf;
-		
-		data_len = get_input(file_name, "Data", data, KEY_BUF_LEN, 0);
-	    }
-	    else
-	    {
-		data_len = strnlen((const char *)data, KEY_BUF_LEN);
-	    }
-	    
-	    write_note(file_name, key, key_len, data, data_len);
-
-	    clear(1);
-
-	}
-
-
-	// decrypt mode
-	else if (workmode == DEC)
-	{
-	    
-	    read_note(file_name, key, key_len);
-
-	    
-	    clear(3);
-	}
-
-
-
-
-	
+    // key input
+    if (key == NULL)
+    {
+	key_len = get_input(file_name, "Key", key_buf, KEY_BUF_LEN, (workmode == ENC));
+	key = key_buf;
+    }
+    else
+    {
+	key_len = strnlen((const char *)key, KEY_BUF_LEN);
     }
 
 
+
+
+	
+
+    // encrypt mode
+    if (workmode == ENC)
+    {
+	if (data == NULL)
+	{
+	    data = data_buf;
+		
+	    data_len = get_input(file_name, "Data", data, KEY_BUF_LEN, 0);
+	}
+	else
+	{
+	    data_len = strnlen((const char *)data, KEY_BUF_LEN);
+	}
+	    
+	write_note(file_name, key, key_len, data, data_len);
+
+	clear(0, 0);
+
+    }
+
+
+    // decrypt mode
+    else if (workmode == DEC)
+    {
+	    
+	read_note(file_name, key, key_len);
+
+	    
+	clear(0, 2);
+    }
+
+
+
+
     
-    //load_note(file_name);
+//load_note(file_name);
 
 
     return 0;
@@ -192,7 +163,7 @@ int main(int argc, char* argv[])
 
 size_t get_input(const char * title, const char * prompt, unsigned char * buf_out, size_t buf_len, int is_retype)
 {
-    clear(1);
+    clear(0, 0);
     printf("[%s]\n", title);
 
     char * password_mismatch = "";
@@ -211,8 +182,7 @@ size_t get_input(const char * title, const char * prompt, unsigned char * buf_ou
 	// first input
 	printf("%s%s: ", password_mismatch, prompt);
 	buf_len_tmp[0] = get_stdin(buf_tmp[0], buf_len);
-	clear(2);
-	//printf("\r%.*s\x1B[A\n", (int) (buf_len_tmp[0] + 2 + strnlen(prompt, BUF_LEN) + strnlen(password_mismatch, BUF_LEN)), HIDE_KEY_STR);
+	clear(0, 1);
 
 	// no retype and recheck if set
 	if (!is_retype)
@@ -222,19 +192,15 @@ size_t get_input(const char * title, const char * prompt, unsigned char * buf_ou
 	}
 	
 	// second input
-	printf("Retype %s: ", prompt);
+	printf("%sRetype %s: ", password_mismatch, prompt);
 	buf_len_tmp[1] = get_stdin(buf_tmp[1], buf_len);
-	clear(2);
-	//printf("\r%.*s\x1B[A\n", (int) (buf_len_tmp[1] + 9 + strnlen(prompt, BUF_LEN)), HIDE_KEY_STR);
+	clear(0, 1);
 
 	if (buf_len_tmp[0] == buf_len_tmp[1] &&
 	    datncmp(buf_tmp[0], buf_tmp[1], buf_len_tmp[1]) == 0)
 	    break;
 
 	password_mismatch = "[MISMATCH] ";
-
-	if (!feof(stdin))
-	    return 0;
     }
 
 
