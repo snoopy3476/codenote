@@ -37,8 +37,9 @@ salt.h:
 
 
 
+# Packages 'gcc-mingw-w64-x86-64', 'libgcrypt-mingw-w64-dev' are required
 static-win64:
-	x86_64-w64-mingw32-gcc $(SRC) /usr/x86_64-w64-mingw32/lib/libgcrypt.a /usr/x86_64-w64-mingw32/lib/libgpg-error.a /usr/x86_64-w64-mingw32/lib/libws2_32.a -o $(TARGET).exe
+	x86_64-w64-mingw32-gcc $(SRC) /usr/x86_64-w64-mingw32/lib/libgcrypt.a /usr/x86_64-w64-mingw32/lib/libgpg-error.a /usr/x86_64-w64-mingw32/lib/libws2_32.a -o $(TARGET).exe 
 
 
 

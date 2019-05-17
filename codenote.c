@@ -200,7 +200,7 @@ size_t get_input(const char * title, const char * prompt, unsigned char * buf_ou
 	    datncmp(buf_tmp[0], buf_tmp[1], buf_len_tmp[1]) == 0)
 	    break;
 
-	password_mismatch = "[MISMATCH] ";
+	password_mismatch = COLOR(FC_GREY_L BC_RED) "[MISMATCH]" COLOR(FC_DEFAULT BC_DEFAULT) " ";
     }
 
 
