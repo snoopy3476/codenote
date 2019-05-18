@@ -15,6 +15,11 @@
 #define HKS_BASE "                                                                                                    "
 #define HIDE_KEY_STR HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE
 
+#define COLOR_TITLE FG_BLACK BG_YELLOW_L
+#define COLOR_DATA FG_BLACK BG_CYAN_L
+#define COLOR_DATA_D FG_BLACK BG_WHITE
+#define COLOR_WARNING FG_BLACK BG_RED
+
 
 #define new_page() printf(MOVE_CURSOR NEWPAGE, 1, 1)
 #define clear(offset_x, offset_y) printf(MOVE_CURSOR CLEAR, (offset_y)+1, (offset_x)+1)
@@ -129,7 +134,7 @@ int main(int argc, char* argv[])
 	size_t write_size = write_note(note, key, key_len, data, data_len);
 	
 	if (write_size == 0)
-	    printf("\t" COLOR(FG_BLACK BG_RED) " *** ENCRYPT ERROR *** " COLOR(FG_DEFAULT BG_DEFAULT) "\n");
+	    printf("\t" COLOR(COLOR_WARNING) " *** ENCRYPT ERROR *** " COLOR(CO_DEFAULT) "\n");
     }
     break;
 
@@ -152,12 +157,12 @@ int main(int argc, char* argv[])
 
 	
 
-	printf(COLOR(FG_BLACK BG_CYAN_L));
+	if (interactive) printf(COLOR(COLOR_DATA));
 	size_t read_size = read_note(note, key, key_len);
-	printf(COLOR(CO_DEFAULT));
+	if (interactive) printf(COLOR(COLOR_DATA_D) FILL_LINE "\n" COLOR(COLOR_TITLE) FILL_LINE "\n" COLOR(CO_DEFAULT));
 
 	if (read_size == 0)
-	    printf("\t" COLOR(FG_BLACK BG_RED) " *** DECRYPT ERROR *** " COLOR(FG_DEFAULT BG_DEFAULT) "\n");
+	    printf("\t" COLOR(COLOR_WARNING) " *** DECRYPT ERROR *** " COLOR(CO_DEFAULT) "\n");
     }
     break;
 
@@ -226,7 +231,7 @@ size_t get_input(const char * prompt, byte * buf_out, size_t buf_len, int is_ret
 	    memcmp(buf_tmp[0], buf_tmp[1], buf_len_tmp[1]) == 0)
 	    break;
 
-	password_mismatch = COLOR(FG_BLACK BG_RED) "[MISMATCH]" COLOR(FG_DEFAULT BG_DEFAULT) " ";
+	password_mismatch = COLOR(COLOR_WARNING) "[MISMATCH]" COLOR(CO_DEFAULT) " ";
     }
 
 
@@ -351,5 +356,5 @@ byte * get_data(byte * data, size_t * data_len_out)
 
 void print_title(char * title)
 {
-    printf(MOVE_CURSOR COLOR(FG_BLACK BG_YELLOW_L) " [%s]" FILL_LINE COLOR(CO_DEFAULT) "\n", 1, 1, title);
+    printf(MOVE_CURSOR COLOR(COLOR_TITLE) " [%s]" FILL_LINE COLOR(CO_DEFAULT) "\n", 1, 1, title);
 }

@@ -13,7 +13,7 @@
 #define CNOTE_DEC_CHECK ""
 
 #define encsize(size) ( ((size) / AES_BLOCK_SIZE + 2) * AES_BLOCK_SIZE )
-#define min(x, y) ( (x) < (y) ? (x) : (y) )
+#define min_size(x, y) ( ((x) < (y)) ? (x) : (y) )
 
 
 typedef unsigned char byte;
@@ -144,7 +144,6 @@ size_t decrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_
     size_t index;
     for (index = 0; index < origdata_size; index++)
         printf("%c", (*data)[index]);
-    printf("\n");
 
     gcry_cipher_close(handle);
     
@@ -168,7 +167,7 @@ byte * encrypt_data_size(uint64_t size, byte * key, size_t key_len)
 	result[i] = (size >> (i*ENCSIZE_SIZE)) & BYTE_FILTER;
 
     // append check value (for decryption)
-    memcpy(&result[ENCSIZE_SIZE], key, min(AES_BLOCK_SIZE - ENCSIZE_SIZE, key_len));
+    memcpy(&result[ENCSIZE_SIZE], key, min_size(AES_BLOCK_SIZE - ENCSIZE_SIZE, key_len));
 
     return result;
 }
@@ -187,7 +186,7 @@ uint64_t decrypt_data_size(byte * size, byte * key, size_t key_len)
 	result += (size[i] << (i*BITS_PER_BYTE)) & BYTE_FILTER;
 
     // check if valid decryption
-    size_t check_size = min(AES_BLOCK_SIZE - ENCSIZE_SIZE, key_len);
+    size_t check_size = min_size(AES_BLOCK_SIZE - ENCSIZE_SIZE, key_len);
     memcpy(check, &size[ENCSIZE_SIZE], check_size);
     if (memcmp(check, key, check_size) != 0)
 	return 0;
