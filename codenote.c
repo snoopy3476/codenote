@@ -17,8 +17,18 @@
 
 #define COLOR_TITLE FG_BLACK BG_YELLOW_L
 #define COLOR_DATA FG_BLACK BG_CYAN_L
-#define COLOR_DATA_D FG_BLACK BG_WHITE
-#define COLOR_WARNING FG_BLACK BG_RED
+#define COLOR_DATA_D FG_BLACK BG_CYAN
+#define COLOR_WARNING FG_BLACK BG_RED_L
+
+
+// for Windows 10 compatibility //
+#ifdef _WIN32
+#include <windows.h>
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
+#endif
+
 
 
 #define new_page() printf(MOVE_CURSOR NEWPAGE, 1, 1)
@@ -101,6 +111,39 @@ int main(int argc, char* argv[])
 	}
     }
 
+
+
+
+
+
+    
+    // use ANSI sequence on Windows 10
+#ifdef _WIN32
+    if (interactive)
+    {
+	HANDLE console_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+	DWORD console_mode;
+	GetConsoleMode(console_handle, &console_mode);
+	console_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    
+	SetConsoleMode(console_handle, console_mode);
+    }
+#endif
+
+
+
+
+    
+    // print title
+    
+    if (interactive)
+    {
+	new_page();
+	clear(0, 0);
+	print_title(NULL);
+    }
+	
+
 	
 
 
@@ -110,7 +153,7 @@ int main(int argc, char* argv[])
     switch (workmode)
     {
 	
-	// encrypt mode
+    // encrypt mode
     case WM_ENCRYPT:
     {
 	// name input
@@ -157,12 +200,18 @@ int main(int argc, char* argv[])
 
 	
 
-	if (interactive) printf(COLOR(COLOR_DATA));
+	if (interactive)
+	    printf(COLOR(COLOR_DATA));
 	size_t read_size = read_note(note, key, key_len);
-	if (interactive) printf(COLOR(COLOR_DATA_D) FILL_LINE "\n" COLOR(COLOR_TITLE) FILL_LINE "\n" COLOR(CO_DEFAULT));
-
+	char * footer_line = COLOR(COLOR_DATA_D) FILL_LINE "\n";
 	if (read_size == 0)
-	    printf("\t" COLOR(COLOR_WARNING) " *** DECRYPT ERROR *** " COLOR(CO_DEFAULT) "\n");
+	{
+	    printf(COLOR(COLOR_WARNING) " *** DECRYPT ERROR *** " FILL_LINE "\n" COLOR(CO_DEFAULT));
+	    footer_line = ""; // print red line instead of data line
+	}
+	if (interactive)
+	    printf("%s" COLOR(COLOR_TITLE) FILL_LINE "\n" COLOR(CO_DEFAULT), footer_line);
+
     }
     break;
 
@@ -356,5 +405,8 @@ byte * get_data(byte * data, size_t * data_len_out)
 
 void print_title(char * title)
 {
-    printf(MOVE_CURSOR COLOR(COLOR_TITLE) " [%s]" FILL_LINE COLOR(CO_DEFAULT) "\n", 1, 1, title);
+    printf(MOVE_CURSOR COLOR(COLOR_TITLE) " [Codenote] ", 1, 1);
+    if (title != NULL)
+	printf("- <%s>", title);
+    printf(FILL_LINE COLOR(CO_DEFAULT) "\n");
 }
