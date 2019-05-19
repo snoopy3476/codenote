@@ -1,13 +1,14 @@
 #include "noteio.h"
 #include "ansiseq.h"
+#include "theme.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define BUF_LEN 1024
-#define KEY_BUF_LEN 1 << 15
-#define DATA_BUF_LEN 1 << 20
+#define KEY_BUF_SIZE 1 << 15
+#define DATA_BUF_SIZE 1 << 15
 
 #define EXT ".cnote"
 #define EXT_LEN 6
@@ -15,19 +16,12 @@
 #define HKS_BASE "                                                                                                    "
 #define HIDE_KEY_STR HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE
 
-#define COLOR_TITLE FG_BLACK BG_YELLOW_L
-#define COLOR_DATA FG_BLACK BG_CYAN_L
-#define COLOR_DATA_D FG_BLACK BG_CYAN
-#define COLOR_WARNING FG_BLACK BG_RED_L
 
-
-// for Windows 10 compatibility //
-#ifdef _WIN32
-#include <windows.h>
-#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
-#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
-#endif
-#endif
+#define MSG_ERR_UNDEFINED "UNDEFINED ERROR"
+#define MSG_ERR_FOPEN "FILE OPEN ERROR"
+#define MSG_ERR_STDIN "INPUT ERROR"
+#define MSG_ERR_ENCRYPT "ENCRYPT ERROR"
+#define MSG_ERR_DECRYPT "DECRYPT ERROR"
 
 
 
@@ -35,9 +29,14 @@
 #define clear(offset_x, offset_y) printf(MOVE_CURSOR CLEAR, (offset_y)+1, (offset_x)+1)
 
 
-typedef unsigned char byte;
 
 typedef enum workmode_t {WM_NONE, WM_ENCRYPT, WM_DECRYPT} workmode_t;
+char const * const WORKMODE_STR[3] =
+{
+    "GENERAL",
+    "ENCRYPT",
+    "DECRYPT"
+};
 typedef enum fopenmode_t {FM_READ = 0, FM_WRITE} fopenmode_t;
 char const * const FOPENMODE_STR[2] =
 {
@@ -45,29 +44,33 @@ char const * const FOPENMODE_STR[2] =
     "wb+"
 };
 
+
+
+
 size_t get_input(const char * prompt, byte * buf_out, size_t buf_len, int is_retype);
 size_t get_stdin(char * buf, size_t buf_len);
 
 FILE * get_file(char ** file_name, fopenmode_t fopenmode);
-byte * get_key(byte * key, size_t * key_len_out, int is_retype);
-byte * get_data(byte * data, size_t * data_len_out);
+byte * get_key(byte * key, size_t * key_size_out, int is_retype);
+byte * get_data(byte * data, size_t * data_size_out);
 
-void print_title(char * title);
+void print_title(workmode_t workmode, char * title);
+
 
 
 int main(int argc, char* argv[])
 {
     char * file_name = NULL;
     byte * key = NULL;
-    size_t key_len;
+    size_t key_size;
     byte * data = NULL;
-    size_t data_len;
-    FILE * note = NULL;
+    size_t data_size;
     int interactive = 1;
 
 
 
-	
+
+    // args processing
     workmode_t workmode = WM_NONE;
     if (argc > 1 && strncmp(argv[1], "-e", BUF_LEN) == 0)
     {
@@ -118,18 +121,9 @@ int main(int argc, char* argv[])
 
     
     // use ANSI sequence on Windows 10
-#ifdef _WIN32
-    if (interactive)
-    {
-	HANDLE console_handle = GetStdHandle(STD_OUTPUT_HANDLE);
-	DWORD console_mode;
-	GetConsoleMode(console_handle, &console_mode);
-	console_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-    
-	SetConsoleMode(console_handle, console_mode);
-    }
-#endif
 
+    if (interactive)
+	set_windows_ansi_ready();
 
 
 
@@ -140,7 +134,7 @@ int main(int argc, char* argv[])
     {
 	new_page();
 	clear(0, 0);
-	print_title(NULL);
+	print_title(workmode, NULL);
     }
 	
 
@@ -149,6 +143,10 @@ int main(int argc, char* argv[])
 
 
     // encrypt || decrypt
+    
+    size_t processed_size = 0;
+    byte * processed_data = NULL;
+    char * error_msg = MSG_ERR_UNDEFINED;
 
     switch (workmode)
     {
@@ -157,27 +155,56 @@ int main(int argc, char* argv[])
     case WM_ENCRYPT:
     {
 	// name input
-	note = get_file(&file_name, FM_WRITE);
+	FILE * note = get_file(&file_name, FM_WRITE);
+	if (note == NULL)
+	{
+	    error_msg = MSG_ERR_FOPEN;
+	    break;
+	}
 
 	// print title
 	if (interactive)
 	{
 	    clear(0, 0);
-	    print_title(file_name);
+	    print_title(workmode, file_name);
 	}
     
 	// key input
-	key = get_key(key, &key_len, 1);
+	key = get_key(key, &key_size, 1);
+	if (key == NULL)
+	{
+	    error_msg = MSG_ERR_STDIN;
+	    fclose(note);
+	    break;
+	}
 
 	// data input
-	data = get_data(data, &data_len);
-
+	data = get_data(data, &data_size);
+	if (data == NULL)
+	{
+	    error_msg = MSG_ERR_STDIN;
+	    fclose(note);
+	    break;
+	}
 
 	
-	size_t write_size = write_note(note, key, key_len, data, data_len);
-	
-	if (write_size == 0)
-	    printf("\t" COLOR(COLOR_WARNING) " *** ENCRYPT ERROR *** " COLOR(CO_DEFAULT) "\n");
+
+	error_msg = MSG_ERR_ENCRYPT;
+	processed_size = write_note(note, key, key_size, data, data_size);
+	fclose(note);
+	note = NULL;
+
+
+	// check if encrypted without error
+	FILE * note_check = get_file(&file_name, FM_READ);
+	if (note_check == NULL)
+	    break;
+	    
+	processed_size = read_note(note_check, key, key_size, &processed_data);
+	if (data_size != processed_size || memcmp(data, processed_data, data_size) != 0)
+	    processed_size = 0;
+
+	fclose(note_check);
     }
     break;
 
@@ -186,31 +213,35 @@ int main(int argc, char* argv[])
     case WM_DECRYPT:
     {
 	// name input
-	note = get_file(&file_name, FM_READ);
+	FILE * note = get_file(&file_name, FM_READ);
+	if (note == NULL)
+	{
+	    error_msg = MSG_ERR_FOPEN;
+	    break;
+	}
 
 	// print title
 	if (interactive)
 	{
 	    clear(0, 0);
-	    print_title(file_name);
+	    print_title(workmode, file_name);
 	}
     
 	// key input
-	key = get_key(key, &key_len, 0);
+	key = get_key(key, &key_size, 0);
+	if (key == NULL)
+	{
+	    error_msg = MSG_ERR_STDIN;
+	    fclose(note);
+	    break;
+	}
 
 	
 
-	if (interactive)
-	    printf(COLOR(COLOR_DATA));
-	size_t read_size = read_note(note, key, key_len);
-	char * footer_line = COLOR(COLOR_DATA_D) FILL_LINE "\n";
-	if (read_size == 0)
-	{
-	    printf(COLOR(COLOR_WARNING) " *** DECRYPT ERROR *** " FILL_LINE "\n" COLOR(CO_DEFAULT));
-	    footer_line = ""; // print red line instead of data line
-	}
-	if (interactive)
-	    printf("%s" COLOR(COLOR_TITLE) FILL_LINE "\n" COLOR(CO_DEFAULT), footer_line);
+	error_msg = MSG_ERR_DECRYPT;
+	processed_size = read_note(note, key, key_size, &processed_data);
+	fclose(note);
+	note = NULL;
 
     }
     break;
@@ -220,24 +251,43 @@ int main(int argc, char* argv[])
     }
 
 
+    
+    // print result //
+
+    // title bar
+    if (interactive)
+	printf(COLOR(COLOR_DATA) MOVE_CURSOR, 2, 1);
+
+    if (processed_data != NULL)
+	for (size_t index = 0; index < processed_size; index++)
+	    printf("%c", processed_data[index]);
+    
+    char * footer_line = COLOR(COLOR_DATA_D) FILL_LINE "\n";
+    if (processed_size == 0)
+    {
+	printf(COLOR(COLOR_WARNING) " *** %s *** " FILL_LINE "\n" COLOR(CO_DEFAULT), error_msg);
+	footer_line = ""; // print red line instead of data line
+    }
+    if (interactive)
+	printf("%s" COLOR(COLOR_TITLE) FILL_LINE "\n" COLOR(CO_DEFAULT), footer_line);
+
+
 
 
 
 
     // free
-    
-    if (note != NULL)
-    {
-	fclose(note);
-	note = NULL;
-    }
-    
+    if (processed_data != NULL) 
+	free(processed_data);
     free(file_name);
     free(key);
     free(data);
 
 
-    return 0;
+    if (processed_size != 0)
+	return 0;
+    else
+	return -1;
 }
 
 
@@ -319,7 +369,7 @@ FILE * get_file(char ** file_name, fopenmode_t fopenmode)
 	= (char *) malloc(sizeof(char) * BUF_LEN);
     size_t name_len;
     
-    if (*file_name == NULL)
+    if (file_name == NULL || *file_name == NULL)
     {
 	printf("Note name: ");
 	fgets(name_buf, BUF_LEN, stdin);
@@ -341,72 +391,76 @@ FILE * get_file(char ** file_name, fopenmode_t fopenmode)
     // append cnote extension to filename
     if (strstr(name_buf, EXT) != (name_buf + name_len - EXT_LEN))
 	strcat(name_buf, EXT);
-	    
-    *file_name = name_buf;
+
+    
+    if (file_name == NULL)
+	free(name_buf);
+    else
+	*file_name = name_buf;
 
     
     return fopen(*file_name, FOPENMODE_STR[fopenmode]);
 }
 
-byte * get_key(byte * key, size_t * key_len_out, int is_retype)
+byte * get_key(byte * key, size_t * key_size_out, int is_retype)
 {
-    size_t key_len = 0;
+    size_t key_size = 0;
 
     byte * key_buf
-	= (byte *) malloc(sizeof(char) * KEY_BUF_LEN);
+	= (byte *) malloc(sizeof(char) * KEY_BUF_SIZE);
     
     if (key == NULL)
     {
-	key_len = get_input("Key", key_buf, KEY_BUF_LEN, is_retype);
+	key_size = get_input("Key", key_buf, KEY_BUF_SIZE, is_retype);
     }
     else
     {
-	key_len = strnlen((char *)key, KEY_BUF_LEN);
-	strncpy((char *)key_buf, (char *)key, key_len);
+	key_size = strnlen((char *)key, KEY_BUF_SIZE);
+	strncpy((char *)key_buf, (char *)key, key_size);
     }
     
 
-    if (key_len == 0)
+    if (key_size == 0)
 	return NULL;
 
-    key_buf = realloc(key_buf, sizeof(byte) * key_len);
-    *key_len_out = key_len;
+    key_buf = realloc(key_buf, sizeof(byte) * key_size);
+    *key_size_out = key_size;
     return key_buf;
 }
 
-byte * get_data(byte * data, size_t * data_len_out)
+byte * get_data(byte * data, size_t * data_size_out)
 {
-    size_t data_len = 0;
+    size_t data_size = 0;
 
     byte * data_buf
-	= (byte *) malloc(sizeof(char) * DATA_BUF_LEN);
+	= (byte *) malloc(sizeof(char) * DATA_BUF_SIZE);
     
     if (data == NULL)
     {
 	data = data_buf;
 		
-	data_len = get_input("Data", data, DATA_BUF_LEN, 0);
+	data_size = get_input("Data", data, DATA_BUF_SIZE, 0);
     }
     else
     {
-	data_len = strnlen((const char *)data, DATA_BUF_LEN);
-	strncpy((char *)data_buf, (char *)data, data_len);
+	data_size = strnlen((const char *)data, DATA_BUF_SIZE);
+	strncpy((char *)data_buf, (char *)data, data_size);
     }
     
 
-    if (data_len == 0)
+    if (data_size == 0)
 	return NULL;
 
-    data_buf = realloc(data_buf, sizeof(byte) * data_len);
-    *data_len_out = data_len;
+    data_buf = realloc(data_buf, sizeof(byte) * data_size);
+    *data_size_out = data_size;
     return data_buf;
 }
 
 
-void print_title(char * title)
+void print_title(workmode_t workmode, char * title)
 {
-    printf(MOVE_CURSOR COLOR(COLOR_TITLE) " [Codenote] ", 1, 1);
+    printf(MOVE_CURSOR COLOR(COLOR_TITLE) " [Codenote] %s MODE ", 1, 1, WORKMODE_STR[workmode]);
     if (title != NULL)
-	printf("- <%s>", title);
+	printf("- " COLOR(COLOR_TITLE_FILE_NAME) "<%s>" COLOR(COLOR_TITLE), title);
     printf(FILL_LINE COLOR(CO_DEFAULT) "\n");
 }

@@ -24,7 +24,7 @@ $(TARGET).dynamic: $(OBJS)
 
 
 
-codenote.o: codenote.c noteio.h ansiseq.h
+codenote.o: codenote.c noteio.h ansiseq.h ansicolor.h theme.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 noteio.o: noteio.c noteio.h salt.h
@@ -34,6 +34,9 @@ noteio.o: noteio.c noteio.h salt.h
 
 salt.h:
 	cp -af salt-default.h salt.h
+
+theme.h:
+	cp -af theme-default.h theme.h
 
 
 

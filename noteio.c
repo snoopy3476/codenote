@@ -16,7 +16,6 @@
 #define min_size(x, y) ( ((x) < (y)) ? (x) : (y) )
 
 
-typedef unsigned char byte;
 
 size_t encrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_len);
 size_t decrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_len);
@@ -29,7 +28,7 @@ size_t load_file_data(FILE * fp, byte ** out);
 
 
 
-size_t read_note(FILE * note, byte * key, size_t key_len)
+size_t read_note(FILE * note, byte * key, size_t key_len, byte ** data_out)
 {
     if (note == NULL || key == NULL)
 	return 0;
@@ -41,8 +40,22 @@ size_t read_note(FILE * note, byte * key, size_t key_len)
 
     size_t result_size = decrypt(&note_data, file_size, key, key_len);
 
-    
-    free(note_data);
+
+
+    // pass data to data_out ptr if data_out != NULL
+    if (result_size != 0 && data_out != NULL)
+    {
+	*data_out = note_data;
+    }
+
+    // print data if data_out == NULL
+    else
+    {
+	for (size_t index = 0; index < result_size; index++)
+	    printf("%c", note_data[index]);
+	
+	free(note_data);
+    }
 
     return result_size;
 }
@@ -139,11 +152,6 @@ size_t decrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_
     
     *data = (byte *) realloc(*data, sizeof(byte) * (origdata_size + 1));
     (*data)[origdata_size] = '\0';
-    
-
-    size_t index;
-    for (index = 0; index < origdata_size; index++)
-        printf("%c", (*data)[index]);
 
     gcry_cipher_close(handle);
     
@@ -206,19 +214,41 @@ size_t load_file_data(FILE * fp, byte ** out)
     }
 
     
-    byte * note_data = (byte *) malloc(sizeof(byte) * ALLOC_LEN);
+    byte * note_data = (byte *) malloc(sizeof(byte) * ALLOC_LEN),
+	* note_data_old_ptr = NULL;
     size_t file_size = 0, alloc_step = 0;
 
     while (!feof(fp))
     {
-	note_data = realloc(note_data, sizeof(byte) * ALLOC_LEN * (++alloc_step + 1));
 	file_size += fread(note_data + file_size, sizeof(byte), ALLOC_LEN, fp);
+	
+	note_data_old_ptr = note_data;
+	note_data = realloc(note_data, sizeof(byte) * ALLOC_LEN * (++alloc_step + 1));
+	if (note_data == NULL && note_data_old_ptr != NULL)
+	{
+	    free(note_data_old_ptr);
+	    break;
+	}
     }
 
-    if (file_size != 0)
-	*out = realloc(note_data, sizeof(byte) * file_size);
-    else
+
+
+    if (out != NULL)
+    {
 	*out = NULL;
+	
+	if (file_size != 0 && note_data != NULL)
+	    *out = realloc(note_data, sizeof(byte) * file_size);
+	
+	if (*out == NULL)
+	    free(note_data);
+    }
+    else
+    {
+	free(note_data);
+    }
+
+    
 
     return file_size;
 }
