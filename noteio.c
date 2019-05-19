@@ -4,7 +4,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <gcrypt.h>
+#include <time.h>
+
+#include "gcrypt.h"
 
 #define AES_BLOCK_SIZE 16
 #define ENCSIZE_SIZE 8
@@ -12,7 +14,7 @@
 #define BYTE_FILTER 0xff
 #define CNOTE_DEC_CHECK ""
 
-#define encsize(size) ( ((size) / AES_BLOCK_SIZE + 2) * AES_BLOCK_SIZE )
+#define encsize(size) ( ((size) / AES_BLOCK_SIZE + 3) * AES_BLOCK_SIZE )
 #define min_size(x, y) ( ((x) < (y)) ? (x) : (y) )
 
 
@@ -22,6 +24,8 @@ size_t decrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_
 
 byte * encrypt_data_size(uint64_t size, byte * key, size_t key_len);
 uint64_t decrypt_data_size(byte * size, byte * key, size_t key_len);
+
+byte * generate_iv();
 
 size_t load_file_data(FILE * fp, byte ** out);
 
@@ -90,33 +94,57 @@ size_t encrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_
 	return 0;
 
     
+
     
-    size_t key_len = gcry_cipher_get_algo_keylen(GCRY_CIPHER);
-    byte * key_final = (byte *) malloc(sizeof(byte) * key_len);
 
-
+    // init gcrypt //
     gcry_cipher_hd_t handle;
 
     gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
     gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
     gcry_cipher_open(&handle, GCRY_CIPHER, GCRY_MODE, 0);
 
+    
+    // init key //
+    size_t key_len = gcry_cipher_get_algo_keylen(GCRY_CIPHER);
+    byte * key_final = (byte *) malloc(sizeof(byte) * key_len);
     gcry_kdf_derive(key_orig, key_orig_len, GCRY_KDF_PBKDF2, GCRY_CIPHER, KEY_SALT, KEY_SALT_LEN, 16, key_len, key_final);
     gcry_cipher_setkey(handle, key_final, key_len);
 
     
+    // append data size info //
     size_t encdata_size = encsize(data_size);
-    *data = (byte *) realloc(*data, sizeof(byte) * encdata_size);
-    memcpy(*data + encdata_size - AES_BLOCK_SIZE,
-	   encrypt_data_size(data_size, key_final, key_len),
-	   sizeof(byte) * AES_BLOCK_SIZE);
+    byte * data_realloc = (byte *) realloc(*data, sizeof(byte) * encdata_size);
+    if (data_realloc == NULL)
+    {
+	free(key_final);
+	return 0;
+    }
+    else
+    {
+	*data = data_realloc;
 
-    
+	byte * encdata_size_ptr = *data + encdata_size - (2*AES_BLOCK_SIZE);
+	memcpy(encdata_size_ptr,
+	       encrypt_data_size(data_size, key_final, key_len),
+	       sizeof(byte) * AES_BLOCK_SIZE);
+	
+	free(key_final);
+    }
+
+
+    // init iv //
+    byte * iv_ptr = *data + encdata_size - (AES_BLOCK_SIZE);
+    memcpy(iv_ptr, generate_iv(), AES_BLOCK_SIZE);
+    gcry_cipher_setiv(handle, iv_ptr, AES_BLOCK_SIZE);
+
+
+    // encrypt //
     gcry_cipher_encrypt(handle, *data, encdata_size, NULL, 0);
 
+
+    // close gcrypt //
     gcry_cipher_close(handle);
-    
-    free(key_final);
 
     return encdata_size;
 }
@@ -128,34 +156,59 @@ size_t decrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_
 	return 0;
 
     
-    size_t key_len = gcry_cipher_get_algo_keylen(GCRY_CIPHER);
 
-    byte * key_final = (byte *) malloc(sizeof(byte) * key_len);
-
-
+    // init gcrypt //
     gcry_cipher_hd_t handle;
 
     gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
     gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
     gcry_cipher_open(&handle, GCRY_CIPHER, GCRY_MODE, 0);
 
+
+    // init key //
+    size_t key_len = gcry_cipher_get_algo_keylen(GCRY_CIPHER);
+    byte * key_final = (byte *) malloc(sizeof(byte) * key_len);
     gcry_kdf_derive(key_orig, key_orig_len, GCRY_KDF_PBKDF2, GCRY_CIPHER, KEY_SALT, KEY_SALT_LEN, 16, key_len, key_final);
     gcry_cipher_setkey(handle, key_final, key_len);
 
+
+    // init iv //
+    byte iv[AES_BLOCK_SIZE];
+    memcpy(iv, &(*data)[data_size - AES_BLOCK_SIZE], AES_BLOCK_SIZE);
+    data_size -= AES_BLOCK_SIZE;
+    gcry_cipher_setiv(handle, iv, AES_BLOCK_SIZE);
+
+
+    // decrypt //
     gcry_cipher_decrypt(handle, *data, data_size, NULL, 0);
 
-    size_t origdata_size = decrypt_data_size(*data + data_size - AES_BLOCK_SIZE, key_final, key_len);
 
-    // check if decoded size is valid
+    // get original data size //
+    size_t origdata_size = decrypt_data_size(*data + data_size - AES_BLOCK_SIZE, key_final, key_len);
+    // check if decrypted size is valid
     if (origdata_size == 0)
 	return 0;
+
+
+    // clean unused vars //
+    free(key_final);
+	
+
+    // change allocated size to fit //
+    byte * data_realloc = (byte *) realloc(*data, sizeof(byte) * (origdata_size + 1));
+    if (data_realloc == NULL)
+	return 0;
+    else
+	*data = data_realloc;
     
-    *data = (byte *) realloc(*data, sizeof(byte) * (origdata_size + 1));
+    // Set '\0' after the last byte of the data
+    // to make printf easier if data are string
     (*data)[origdata_size] = '\0';
 
-    gcry_cipher_close(handle);
+
     
-    free(key_final);
+    // close gcrypt //
+    gcry_cipher_close(handle);
 
     return origdata_size;
 }
@@ -199,6 +252,24 @@ uint64_t decrypt_data_size(byte * size, byte * key, size_t key_len)
     if (memcmp(check, key, check_size) != 0)
 	return 0;
     
+
+    return result;
+}
+
+
+
+void rand_seed()
+{
+    srand(time(NULL));
+}
+
+byte * generate_iv()
+{
+    static byte result[AES_BLOCK_SIZE];
+    
+    // get random byte array
+    for (int i = 0; i < AES_BLOCK_SIZE; i++)
+	result[i] = rand() & BYTE_FILTER;
 
     return result;
 }
