@@ -60,9 +60,21 @@ int main(int argc, char* argv[])
     byte * data = NULL;
     size_t data_size;
     int interactive = 1;
+
+
+
+    
+
+    // init //
+    
+    // use ANSI sequence on Windows 10
+    set_windows_ansi_ready();
+
+    // set seed for random iv
     rand_seed();
 
 
+    
 
 
     // args processing //
@@ -109,18 +121,6 @@ int main(int argc, char* argv[])
 	    break;
 	}
     }
-
-
-
-
-
-
-    
-    // use ANSI sequence on Windows 10 //
-
-    if (interactive)
-	set_windows_ansi_ready();
-
 
 
 
