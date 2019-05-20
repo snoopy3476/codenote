@@ -11,7 +11,7 @@ HEADERS_CUSTOMIZABLE := salt.h theme.h
 
 
 TARGET_W := cnote.exe
-OBJS_W := codenote.wo noteio.wo
+OBJS_W := $(OBJS:.o=.wo)
 LIBS_W := $(LIBS) -l:libws2_32.a
 
 
