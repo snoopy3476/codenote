@@ -7,8 +7,8 @@
 #include <string.h>
 
 #define BUF_LEN 1024
-#define KEY_BUF_SIZE 1 << 15
-#define DATA_BUF_SIZE 1 << 15
+#define KEY_BUF_SIZE (1 << 15)
+#define DATA_BUF_SIZE (1 << 20)
 
 #define EXT ".cnote"
 #define EXT_LEN 6

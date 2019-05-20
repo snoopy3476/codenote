@@ -2,7 +2,7 @@
 #define __CODENOTE_NOTEIO_H__
 #include <stdio.h>
 
-#define ALLOC_LEN 1 << 15
+#define ALLOC_LEN (1 << 10)
 
 
 #define GCRY_CIPHER GCRY_CIPHER_AES256
