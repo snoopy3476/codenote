@@ -2,11 +2,17 @@ CC := gcc
 MAKE := make
 override CFLAGS += -Wall
 
-TARGET := codenote
+TARGET := cnote
 SRC := codenote.c noteio.c
 OBJS := $(SRC:.c=.o)
 LIBS := -l:libgcrypt.a -l:libgpg-error.a
 LIBS_D := -lgcrypt
+HEADERS_CUSTOMIZABLE := salt.h theme.h
+
+
+TARGET_W := cnote.exe
+OBJS_W := codenote.wo noteio.wo
+LIBS_W := $(LIBS) -l:libws2_32.a
 
 
 
@@ -24,27 +30,29 @@ $(TARGET).dynamic: $(OBJS)
 
 
 
-codenote.o: codenote.c noteio.h ansiseq.h ansicolor.h theme.h
+codenote.%o: codenote.c noteio.h ansiseq.h ansicolor.h theme.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-noteio.o: noteio.c noteio.h salt.h
+noteio.%o: noteio.c noteio.h salt.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 
 
-salt.h:
-	cp -af salt-default.h salt.h
 
-theme.h:
-	cp -af theme-default.h theme.h
+$(HEADERS_CUSTOMIZABLE):
+	cp -af $(@:.h=-default.h) $@
 
 
 
 # Packages 'gcc-mingw-w64-x86-64', 'libgcrypt-mingw-w64-dev' are required
-static-win64:
-	x86_64-w64-mingw32-gcc $(SRC) /usr/x86_64-w64-mingw32/lib/libgcrypt.a /usr/x86_64-w64-mingw32/lib/libgpg-error.a /usr/x86_64-w64-mingw32/lib/libws2_32.a -o $(TARGET).exe 
+win:
+	$(MAKE) \
+		CC="x86_64-w64-mingw32-gcc" \
+		LIBS="$(LIBS_W)" \
+		OBJS="$(OBJS_W)" \
+		TARGET="$(TARGET_W)"
 
 
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(TARGET).dynamic $(TARGET).exe
+	rm -f $(OBJS) $(OBJS_W) $(TARGET) $(TARGET).dynamic $(TARGET_W)

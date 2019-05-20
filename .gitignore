@@ -1,6 +1,7 @@
 codenote
 codenote.exe
 *.o
+*.wo
 *.cnote
 salt.h
 salt.h_bak
