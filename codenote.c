@@ -25,8 +25,8 @@
 
 
 
-#define new_page() printf(MOVE_CURSOR NEWPAGE, 1, 1)
-#define clear(offset_x, offset_y) printf(MOVE_CURSOR CLEAR, (offset_y)+1, (offset_x)+1)
+#define new_page() printf(MOVE_CURSOR NEWPAGE, 1, 1); fflush(stdout)
+#define clear(offset_x, offset_y) printf(MOVE_CURSOR CLEAR, (offset_y)+1, (offset_x)+1); fflush(stdout)
 
 
 
@@ -43,10 +43,8 @@ char const * const FOPENMODE_STR[2] =
 
 FILE * get_file(char ** file_name, fopenmode_t fopenmode);
 
-byte * get_key(byte * key, size_t * key_size_out, int is_retype);
-byte * get_data(byte * data, size_t * data_size_out);
-size_t get_input(const char * prompt, byte * buf_out, size_t buf_len, int is_retype);
-size_t get_stdin(char * buf, size_t buf_len);
+byte * get_data(const char * prompt, byte * data, size_t * data_size_out, int is_retype);
+size_t get_input(const char * prompt, byte ** buf_out, int is_retype);
 
 void print_title(workmode_t workmode, char * title);
 
@@ -169,7 +167,7 @@ int main(int argc, char* argv[])
 	}
     
 	// key input
-	key = get_key(key, &key_size, 1);
+	key = get_data("Key", key, &key_size, 1);
 	if (key == NULL)
 	{
 	    error_msg = MSG_ERR_STDIN;
@@ -178,7 +176,7 @@ int main(int argc, char* argv[])
 	}
 
 	// data input
-	data = get_data(data, &data_size);
+	data = get_data("Data", data, &data_size, 0);
 	if (data == NULL)
 	{
 	    error_msg = MSG_ERR_STDIN;
@@ -239,7 +237,7 @@ int main(int argc, char* argv[])
 	}
     
 	// key input
-	key = get_key(key, &key_size, 0);
+	key = get_data("key", key, &key_size, 0);
 	if (key == NULL)
 	{
 	    error_msg = MSG_ERR_STDIN;
@@ -361,75 +359,33 @@ FILE * get_file(char ** file_name, fopenmode_t fopenmode)
 
 
 
-
-
-// get key (stdin)
-byte * get_key(byte * key, size_t * key_size_out, int is_retype)
-{
-    size_t key_size = 0;
-
-    byte * key_buf
-	= (byte *) malloc(sizeof(char) * KEY_BUF_SIZE);
-    
-    if (key == NULL)
-    {
-	key_size = get_input("Key", key_buf, KEY_BUF_SIZE, is_retype);
-    }
-    else
-    {
-	key_size = strnlen((char *)key, KEY_BUF_SIZE);
-	strncpy((char *)key_buf, (char *)key, key_size);
-    }
-    
-
-    if (key_size == 0)
-	return NULL;
-
-    byte * key_buf_realloc = realloc(key_buf, sizeof(byte) * key_size);
-    if (key_buf_realloc == NULL)
-    {
-	free(key_buf);
-	return NULL;
-    }
-
-    key_buf = key_buf_realloc;
-    *key_size_out = key_size;
-    
-    return key_buf;
-}
-
 // get data (stdin)
-byte * get_data(byte * data, size_t * data_size_out)
+byte * get_data(const char * prompt, byte * data, size_t * data_size_out, int is_retype)
 {
     size_t data_size = 0;
 
-    byte * data_buf
-	= (byte *) malloc(sizeof(char) * DATA_BUF_SIZE);
+    byte * data_buf = NULL;
     
     if (data == NULL)
     {
-	data = data_buf;
-		
-	data_size = get_input("Data", data, DATA_BUF_SIZE, 0);
+	data_size = get_input(prompt, &data_buf, is_retype);
     }
     else
     {
+	data_buf = (byte *) malloc(sizeof(char) * DATA_BUF_SIZE);
 	data_size = strnlen((const char *)data, DATA_BUF_SIZE);
 	strncpy((char *)data_buf, (char *)data, data_size);
     }
     
 
     if (data_size == 0)
-	return NULL;
-
-    byte * data_buf_realloc = realloc(data_buf, sizeof(byte) * data_size);
-    if (data_buf_realloc == NULL)
     {
-	free(data_buf);
+	if (data_buf != NULL)
+	    free(data_buf);
+	
 	return NULL;
     }
 
-    data_buf = data_buf_realloc;
     *data_size_out = data_size;
     
     return data_buf;
@@ -437,14 +393,12 @@ byte * get_data(byte * data, size_t * data_size_out)
 
 
 // get input of key / data (stdin)
-size_t get_input(const char * prompt, byte * buf_out, size_t buf_len, int is_retype)
+size_t get_input(const char * prompt, byte ** buf_out, int is_retype)
 {
     char * password_mismatch = "";
     size_t buf_len_cur = 0,
 	buf_len_tmp[2] = {0};
-    char * buf_tmp[2];
-    buf_tmp[0] = (char *) malloc(sizeof(byte) * (buf_len+1));
-    buf_tmp[1] = (char *) malloc(sizeof(byte) * (buf_len+1));
+    byte * buf_tmp[2] = {NULL, NULL};
 
     
     while( 1 )
@@ -454,7 +408,8 @@ size_t get_input(const char * prompt, byte * buf_out, size_t buf_len, int is_ret
 	
 	// first input
 	printf("%s" COLOR(COLOR_DATA_BG) "%s:" COLOR(CO_DEFAULT) " ", password_mismatch, prompt);
-	buf_len_tmp[0] = get_stdin(buf_tmp[0], buf_len);
+	fflush(stdout); // always print prompt above
+	buf_len_tmp[0] = load_file_data(stdin, &buf_tmp[0], "\0\n");
 	clear(0, 1);
 
 	// no retype and recheck if set
@@ -466,7 +421,8 @@ size_t get_input(const char * prompt, byte * buf_out, size_t buf_len, int is_ret
 	
 	// second input
 	printf("%s"  COLOR(COLOR_DATA_BG) "Retype %s:" COLOR(CO_DEFAULT) " ", password_mismatch, prompt);
-	buf_len_tmp[1] = get_stdin(buf_tmp[1], buf_len);
+	fflush(stdout); // always print prompt above
+	buf_len_tmp[1] = load_file_data(stdin, &buf_tmp[1], "\0\n");
 	clear(0, 1);
 
 	if (buf_len_tmp[0] == buf_len_tmp[1] &&
@@ -479,33 +435,13 @@ size_t get_input(const char * prompt, byte * buf_out, size_t buf_len, int is_ret
 
     // copy input to buf
     buf_len_cur = buf_len_tmp[0];
-    memcpy(buf_out, buf_tmp[0], buf_len_cur + 1);
-
+    *buf_out = buf_tmp[0];
     
-    free(buf_tmp[0]);
-    free(buf_tmp[1]);
+    if (buf_tmp[1] != NULL)
+	free(buf_tmp[1]);
 
     return buf_len_cur;
 }
-
-
-// get input from stdin
-size_t get_stdin(char * buf, size_t buf_len)
-{
-    fgets((char *)buf, buf_len, stdin);
-    
-    size_t input_len = strnlen(buf, buf_len);
-	
-    char * last_element = &buf[input_len - 1];
-    if (*last_element == '\n')
-    {
-	*last_element = '\0';
-	input_len--;
-    }
-
-    return input_len;
-}
-
 
 
 

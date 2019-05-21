@@ -14,6 +14,10 @@
 #define BYTE_FILTER 0xff
 #define CNOTE_DEC_CHECK ""
 
+
+#define ALLOC_LEN (1 << 10)
+#define BUF_LEN_SHORT (1 << 7)
+
 #define encsize(size) ( ((size) / AES_BLOCK_SIZE + 3) * AES_BLOCK_SIZE )
 #define min_size(x, y) ( ((x) < (y)) ? (x) : (y) )
 
@@ -27,7 +31,6 @@ uint64_t decrypt_data_size(byte * size, byte * key, size_t key_len);
 
 byte * generate_iv();
 
-size_t load_file_data(FILE * fp, byte ** out);
 
 
 
@@ -39,7 +42,7 @@ size_t read_note(FILE * note, byte * key, size_t key_len, byte ** data_out)
 
     
     byte * note_data;
-    size_t file_size = load_file_data(note, &note_data);
+    size_t file_size = load_file_data(note, &note_data, NULL);
     
 
     size_t result_size = decrypt(&note_data, file_size, key, key_len);
@@ -276,29 +279,86 @@ byte * generate_iv()
 
 
 
-size_t load_file_data(FILE * fp, byte ** out)
+size_t load_file_data(FILE * fp, byte ** out, char const * const delimiters)
 {
+    if (out == NULL)
+	return 0;
+    
     if (fp == NULL)
     {
 	*out = NULL;
 	return 0;
     }
 
-    
     byte * note_data = (byte *) malloc(sizeof(byte) * ALLOC_LEN),
-	* note_data_old_ptr = NULL;
-    size_t file_size = 0, alloc_step = 0;
+	* note_data_realloc = NULL;
+    size_t input_size = 0, alloc_step = 0;
 
-    while (!feof(fp))
+
+    
+    // set delimiter length
+    
+    size_t delim_len;
+    if (delimiters != NULL)
     {
-	file_size += fread(note_data + file_size, sizeof(byte), ALLOC_LEN, fp);
+	if (delimiters[0] == '\0')
+	    delim_len = strnlen(delimiters + 1, BUF_LEN_SHORT) + 1;
+	else
+	    delim_len = strnlen(delimiters, BUF_LEN_SHORT);
+    }
+    else
+	delim_len = 0;
+
+    
+
+    // get input
+
+
+    // if stdin input
+    if (fp == stdin)
+    {
+	fgets((char *)note_data + input_size, sizeof(byte) * ALLOC_LEN, fp);
+	    
+	input_size = strnlen((char *)note_data, ALLOC_LEN);
 	
-	note_data_old_ptr = note_data;
-	note_data = realloc(note_data, sizeof(byte) * ALLOC_LEN * (++alloc_step + 1));
-	if (note_data == NULL && note_data_old_ptr != NULL)
+	char * last_element = (char *) &note_data[input_size - 1];
+	if (*last_element == '\n')
 	{
-	    free(note_data_old_ptr);
-	    break;
+	    *last_element = '\0';
+	    input_size--;
+	}
+    }
+
+    // if file input
+    else
+    {
+	// read_size[0]: length of byte after delim cut
+	// read_size[1]: length of orig fread
+	size_t read_size[2] = {0, 0};
+    
+	while ( !feof(fp) && (read_size[0] == read_size[1]) )
+	{
+	    read_size[0] = fread(note_data + input_size, sizeof(byte), ALLOC_LEN, fp);
+	    read_size[1] = read_size[0];
+
+	    // cut input if one of delimiter exists at input
+	    if (delimiters != NULL)
+		for (size_t i = 0; i < read_size[0]; i++)
+		    for (size_t delim_i = 0; delim_i < delim_len; delim_i++)
+			if (note_data[input_size + i] == delimiters[delim_i])
+			    read_size[0] = i;
+			
+
+	
+	    note_data_realloc = realloc(note_data, sizeof(byte) * ALLOC_LEN * (++alloc_step + 1));
+	    if (note_data_realloc == NULL && note_data != NULL)
+	    {
+		free(note_data);
+		break;
+	    }
+
+	    note_data = note_data_realloc;
+	    input_size += read_size[0];
 	}
     }
 
@@ -308,11 +368,13 @@ size_t load_file_data(FILE * fp, byte ** out)
     {
 	*out = NULL;
 	
-	if (file_size != 0 && note_data != NULL)
-	    *out = realloc(note_data, sizeof(byte) * file_size);
+	if (input_size != 0 && note_data != NULL)
+	    *out = realloc(note_data, sizeof(byte) * input_size + 1);
 	
 	if (*out == NULL)
 	    free(note_data);
+	else
+	    (*out)[input_size] = '\0'; // NULL termination for string input
     }
     else
     {
@@ -321,5 +383,5 @@ size_t load_file_data(FILE * fp, byte ** out)
 
     
 
-    return file_size;
+    return input_size;
 }
