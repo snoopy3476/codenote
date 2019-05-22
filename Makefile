@@ -14,6 +14,8 @@ TARGET_W := cnote.exe
 OBJS_W := $(OBJS:.o=.wo)
 LIBS_W := $(LIBS) -l:libws2_32.a
 
+LIBS_CYG := $(LIBS:.a=.dll.a)
+
 
 
 all: $(TARGET)
@@ -51,6 +53,9 @@ win:
 		LIBS="$(LIBS_W)" \
 		OBJS="$(OBJS_W)" \
 		TARGET="$(TARGET_W)"
+
+cyg:
+	$(MAKE) LIBS="$(LIBS_CYG)"
 
 
 
