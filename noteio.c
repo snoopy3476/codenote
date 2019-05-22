@@ -9,6 +9,8 @@
 #include "gcrypt.h"
 
 #define AES_BLOCK_SIZE 16
+#define AES_IV_SIZE 12
+#define AES_AUTH_STR "Nadekon Codenote"
 #define ENCSIZE_SIZE 8
 #define BITS_PER_BYTE 8
 #define BYTE_FILTER 0xff
@@ -18,7 +20,7 @@
 #define ALLOC_LEN (1 << 10)
 #define BUF_LEN_SHORT (1 << 7)
 
-#define encsize(size) ( ((size) / AES_BLOCK_SIZE + 3) * AES_BLOCK_SIZE )
+#define encsize(size) ( ((size - 1) / AES_BLOCK_SIZE + 4) * AES_BLOCK_SIZE )
 #define min_size(x, y) ( ((x) < (y)) ? (x) : (y) )
 
 
@@ -26,10 +28,8 @@
 size_t encrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_len);
 size_t decrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_len);
 
-byte * encrypt_data_size(uint64_t size, byte * key, size_t key_len);
-uint64_t decrypt_data_size(byte * size, byte * key, size_t key_len);
-
-byte * generate_iv();
+byte * encrypt_data_size(uint64_t size);
+uint64_t decrypt_data_size(byte * size);
 
 
 
@@ -127,27 +127,36 @@ size_t encrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_
     {
 	*data = data_realloc;
 
-	byte * encdata_size_ptr = *data + encdata_size - (2*AES_BLOCK_SIZE);
+	byte * encdata_size_ptr = *data + encdata_size - 3*AES_BLOCK_SIZE;
 	memcpy(encdata_size_ptr,
-	       encrypt_data_size(data_size, key_final, key_len),
+	       encrypt_data_size(data_size),
 	       sizeof(byte) * AES_BLOCK_SIZE);
-	
-	free(key_final);
     }
 
 
-    // init iv //
-    byte * iv_ptr = *data + encdata_size - (AES_BLOCK_SIZE);
-    memcpy(iv_ptr, generate_iv(), AES_BLOCK_SIZE);
-    gcry_cipher_setiv(handle, iv_ptr, AES_BLOCK_SIZE);
+    // init iv , AAD //
+    byte * iv_ptr = *data + encdata_size - 2*AES_BLOCK_SIZE;
+    byte * iv = gcry_random_bytes(AES_IV_SIZE, GCRY_STRONG_RANDOM);
+    if (iv == NULL)
+    {
+	free(key_final);
+	gcry_cipher_close(handle);
+	return 0;
+    }
+    memcpy(iv_ptr, iv, AES_IV_SIZE);
+    free(iv);
+    gcry_cipher_setiv(handle, iv_ptr, AES_IV_SIZE);
+    gcry_cipher_authenticate(handle, AES_AUTH_STR, AES_BLOCK_SIZE);
 
 
     // encrypt //
-    gcry_cipher_encrypt(handle, *data, encdata_size, NULL, 0);
+    gcry_cipher_encrypt(handle, *data, encdata_size - 2*AES_BLOCK_SIZE, NULL, 0);
+    gcry_cipher_gettag(handle, *data + encdata_size - AES_BLOCK_SIZE, AES_BLOCK_SIZE);
 
 
     // close gcrypt //
     gcry_cipher_close(handle);
+    free(key_final);
 
     return encdata_size;
 }
@@ -176,25 +185,22 @@ size_t decrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_
 
 
     // init iv //
-    byte iv[AES_BLOCK_SIZE];
-    memcpy(iv, &(*data)[data_size - AES_BLOCK_SIZE], AES_BLOCK_SIZE);
-    data_size -= AES_BLOCK_SIZE;
-    gcry_cipher_setiv(handle, iv, AES_BLOCK_SIZE);
+    gcry_cipher_setiv(handle, *data + data_size - 2*AES_BLOCK_SIZE, AES_IV_SIZE);
+    gcry_cipher_authenticate(handle, AES_AUTH_STR, AES_BLOCK_SIZE);
 
 
     // decrypt //
-    gcry_cipher_decrypt(handle, *data, data_size, NULL, 0);
-
-
-    // get original data size //
-    size_t origdata_size = decrypt_data_size(*data + data_size - AES_BLOCK_SIZE, key_final, key_len);
-    // check if decrypted size is valid
-    if (origdata_size == 0)
+    gcry_cipher_decrypt(handle, *data, data_size - 2*AES_BLOCK_SIZE, NULL, 0);
+    free(key_final);
+    if (gcry_cipher_checktag(handle, *data + data_size - AES_BLOCK_SIZE, AES_BLOCK_SIZE))
 	return 0;
 
 
-    // clean unused vars //
-    free(key_final);
+    // get original data size //
+    size_t origdata_size = decrypt_data_size(*data + data_size - 3*AES_BLOCK_SIZE);
+    // check if decrypted size is valid
+    if (origdata_size == 0)
+	return 0;
 	
 
     // change allocated size to fit //
@@ -222,61 +228,32 @@ size_t decrypt(byte ** data, size_t data_size, byte * key_orig, size_t key_orig_
 
 
 
-byte * encrypt_data_size(uint64_t size, byte * key, size_t key_len)
+byte * encrypt_data_size(uint64_t size)
 {
     static byte result[AES_BLOCK_SIZE];
     
     // convert int -> byte (size data)
     for (int i = 0; i < ENCSIZE_SIZE; i++)
-	result[i] = (size >> (i*ENCSIZE_SIZE)) & BYTE_FILTER;
-
-    // append check value (for decryption)
-    memcpy(&result[ENCSIZE_SIZE], key, min_size(AES_BLOCK_SIZE - ENCSIZE_SIZE, key_len));
+	result[i] = (size >> (i*BITS_PER_BYTE)) & BYTE_FILTER;
 
     return result;
 }
 
-uint64_t decrypt_data_size(byte * size, byte * key, size_t key_len)
+uint64_t decrypt_data_size(byte * size)
 {
     if (size == NULL)
 	return 0;
 
     
     uint64_t result = 0;
-    byte check[AES_BLOCK_SIZE - ENCSIZE_SIZE];
 
     // convert byte -> int (size data)
     for (int i = 0; i < ENCSIZE_SIZE; i++)
 	result += (size[i] << (i*BITS_PER_BYTE)) & BYTE_FILTER;
-
-    // check if valid decryption
-    size_t check_size = min_size(AES_BLOCK_SIZE - ENCSIZE_SIZE, key_len);
-    memcpy(check, &size[ENCSIZE_SIZE], check_size);
-    if (memcmp(check, key, check_size) != 0)
-	return 0;
     
 
     return result;
 }
-
-
-
-void rand_seed()
-{
-    srand(time(NULL));
-}
-
-byte * generate_iv()
-{
-    static byte result[AES_BLOCK_SIZE];
-    
-    // get random byte array
-    for (int i = 0; i < AES_BLOCK_SIZE; i++)
-	result[i] = rand() & BYTE_FILTER;
-
-    return result;
-}
-
 
 
 size_t load_file_data(FILE * fp, byte ** out, char const * const delimiters)

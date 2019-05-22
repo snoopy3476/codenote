@@ -38,7 +38,8 @@ codenote.%o: codenote.c noteio.h ansiseq.h ansicolor.h theme.h
 noteio.%o: noteio.c noteio.h salt.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-
+codenote.c: theme.h
+noteio.c: salt.h
 
 
 $(HEADERS_CUSTOMIZABLE):
@@ -54,6 +55,7 @@ win:
 		OBJS="$(OBJS_W)" \
 		TARGET="$(TARGET_W)"
 
+# For Cygwin gcc in Windows
 cyg:
 	$(MAKE) LIBS="$(LIBS_CYG)"
 

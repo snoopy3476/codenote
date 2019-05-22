@@ -68,9 +68,6 @@ int main(int argc, char* argv[])
     // use ANSI sequence on Windows 10
     set_windows_ansi_ready();
 
-    // set seed for random iv
-    rand_seed();
-
 
     
 
