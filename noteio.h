@@ -9,8 +9,8 @@
 
 typedef unsigned char byte;
 
-size_t read_note(FILE * note, unsigned char * key, size_t key_len, byte ** data_out);
-size_t write_note(FILE * note, unsigned char * key, size_t key_len, byte * data, size_t data_len);
+size_t read_note(FILE * note, unsigned char * passphrase, size_t passphrase_len, byte ** data_out);
+size_t write_note(FILE * note, unsigned char * passphrase, size_t passphrase_len, byte * data, size_t data_len);
 size_t load_file_data(FILE * fp, byte ** out, char const * const delimiters);
 
 

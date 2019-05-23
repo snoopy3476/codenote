@@ -7,14 +7,11 @@
 #include <string.h>
 
 #define BUF_LEN 1024
-#define KEY_BUF_SIZE (1 << 15)
-#define DATA_BUF_SIZE (1 << 20)
+#define BUF_SIZE_LONG (1 << 20)
 
 #define EXT ".cnote"
 #define EXT_LEN 6
 
-#define HKS_BASE "                                                                                                    "
-#define HIDE_KEY_STR HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE HKS_BASE
 
 
 #define MSG_ERR_UNDEFINED "UNDEFINED ERROR"
@@ -53,8 +50,8 @@ void print_title(workmode_t workmode, char * title);
 int main(int argc, char* argv[])
 {
     char * file_name = NULL;
-    byte * key = NULL;
-    size_t key_size;
+    byte * passphrase = NULL;
+    size_t passphrase_size;
     byte * data = NULL;
     size_t data_size;
     int interactive = 1;
@@ -86,7 +83,7 @@ int main(int argc, char* argv[])
 	    
 	    data = (byte *) argv[4];
 	case 4:
-	    key = (byte *) argv[3];
+	    passphrase = (byte *) argv[3];
 	case 3:
 	    file_name = argv[2];
 
@@ -106,7 +103,7 @@ int main(int argc, char* argv[])
 	default:
 	    interactive = 0; // Nothing to get input from stdin
 	    
-	    key = (byte *) argv[2];
+	    passphrase = (byte *) argv[2];
 	case 2:
 	    file_name = argv[1];
 
@@ -163,9 +160,9 @@ int main(int argc, char* argv[])
 	    print_title(workmode, file_name);
 	}
     
-	// key input
-	key = get_data("Key", key, &key_size, 1);
-	if (key == NULL)
+	// passphrase input
+	passphrase = get_data("Passphrase", passphrase, &passphrase_size, 1);
+	if (passphrase == NULL)
 	{
 	    error_msg = MSG_ERR_STDIN;
 	    fclose(note);
@@ -184,7 +181,7 @@ int main(int argc, char* argv[])
 	
 	// encrypt data and save to file
 	error_msg = MSG_ERR_ENCRYPT;
-	processed_size = write_note(note, key, key_size, data, data_size);
+	processed_size = write_note(note, passphrase, passphrase_size, data, data_size);
 	fclose(note);
 	note = NULL;
 
@@ -201,7 +198,7 @@ int main(int argc, char* argv[])
 
 
 	// check note if encrypted properly
-	processed_size = read_note(note_check, key, key_size, &processed_data);
+	processed_size = read_note(note_check, passphrase, passphrase_size, &processed_data);
 	if (data_size != processed_size || memcmp(data, processed_data, data_size) != 0)
 	{
 	    free(processed_data);
@@ -233,9 +230,9 @@ int main(int argc, char* argv[])
 	    print_title(workmode, file_name);
 	}
     
-	// key input
-	key = get_data("key", key, &key_size, 0);
-	if (key == NULL)
+	// passphrase input
+	passphrase = get_data("Passphrase", passphrase, &passphrase_size, 0);
+	if (passphrase == NULL)
 	{
 	    error_msg = MSG_ERR_STDIN;
 	    fclose(note);
@@ -245,7 +242,7 @@ int main(int argc, char* argv[])
 	
 	// decrypt data
 	error_msg = MSG_ERR_DECRYPT;
-	processed_size = read_note(note, key, key_size, &processed_data);
+	processed_size = read_note(note, passphrase, passphrase_size, &processed_data);
 	fclose(note);
 	note = NULL;
 
@@ -299,7 +296,7 @@ int main(int argc, char* argv[])
     // clean up //
     
     free(file_name);
-    free(key);
+    free(passphrase);
     free(data);
 
 
@@ -369,8 +366,8 @@ byte * get_data(const char * prompt, byte * data, size_t * data_size_out, int is
     }
     else
     {
-	data_buf = (byte *) malloc(sizeof(char) * DATA_BUF_SIZE);
-	data_size = strnlen((const char *)data, DATA_BUF_SIZE);
+	data_buf = (byte *) malloc(sizeof(char) * BUF_SIZE_LONG);
+	data_size = strnlen((const char *)data, BUF_SIZE_LONG);
 	strncpy((char *)data_buf, (char *)data, data_size);
     }
     
@@ -389,7 +386,7 @@ byte * get_data(const char * prompt, byte * data, size_t * data_size_out, int is
 }
 
 
-// get input of key / data (stdin)
+// get input of passphrase / data (stdin)
 size_t get_input(const char * prompt, byte ** buf_out, int is_retype)
 {
     char * password_mismatch = "";

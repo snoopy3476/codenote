@@ -7,7 +7,7 @@ SRC := codenote.c noteio.c
 OBJS := $(SRC:.c=.o)
 LIBS := -l:libgcrypt.a -l:libgpg-error.a
 LIBS_D := -lgcrypt
-HEADERS_CUSTOMIZABLE := salt.h theme.h
+HEADERS_CUSTOMIZABLE := passphrase.h theme.h
 
 
 TARGET_W := cnote.exe
@@ -35,11 +35,11 @@ $(TARGET).dynamic: $(OBJS)
 codenote.%o: codenote.c noteio.h ansiseq.h ansicolor.h theme.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-noteio.%o: noteio.c noteio.h salt.h
+noteio.%o: noteio.c noteio.h passphrase.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 codenote.c: theme.h
-noteio.c: salt.h
+noteio.c: passphrase.h
 
 
 $(HEADERS_CUSTOMIZABLE):

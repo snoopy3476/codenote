@@ -3,6 +3,6 @@ cnote.exe
 *.o
 *.wo
 *.cnote
-salt.h
-salt.h_bak
+passphrase.h
+passphrase.h_bak
 theme.h
