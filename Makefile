@@ -32,14 +32,11 @@ $(TARGET).dynamic: $(OBJS)
 
 
 
-codenote.%o: codenote.c noteio.h ansiseq.h ansicolor.h theme.h
+codenote.o codenote.wo: codenote.c noteio.h ansiseq.h ansicolor.h theme.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-noteio.%o: noteio.c noteio.h passphrase.h
+noteio.o noteio.wo: noteio.c noteio.h passphrase.h
 	$(CC) $(CFLAGS) -c $< -o $@
-
-codenote.c: theme.h
-noteio.c: passphrase.h
 
 
 $(HEADERS_CUSTOMIZABLE):
@@ -49,7 +46,7 @@ $(HEADERS_CUSTOMIZABLE):
 
 # Packages 'gcc-mingw-w64-x86-64', 'libgcrypt-mingw-w64-dev' are required
 win:
-	$(MAKE) \
+	$(MAKE) --no-print-directory \
 		CC="x86_64-w64-mingw32-gcc" \
 		LIBS="$(LIBS_W)" \
 		OBJS="$(OBJS_W)" \
@@ -57,7 +54,7 @@ win:
 
 # For Cygwin gcc in Windows
 cyg:
-	$(MAKE) LIBS="$(LIBS_CYG)"
+	$(MAKE) --no-print-directory LIBS="$(LIBS_CYG)"
 
 
 

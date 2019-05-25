@@ -29,11 +29,6 @@
 
 typedef enum workmode_t {WM_NONE, WM_ENCRYPT, WM_DECRYPT} workmode_t;
 typedef enum fopenmode_t {FM_READ = 0, FM_WRITE} fopenmode_t;
-char const * const FOPENMODE_STR[2] =
-{
-    "rb",
-    "wb+"
-};
 
 
 
@@ -312,6 +307,12 @@ int main(int argc, char* argv[])
 
 
 // open file from filename
+char const * const FOPENMODE_STR[2] =
+{
+    "rb",
+    "wb+"
+};
+
 FILE * get_file(char ** file_name, fopenmode_t fopenmode)
 {
     char * name_buf
@@ -440,6 +441,7 @@ size_t get_input(const char * prompt, byte ** buf_out, int is_retype)
 
 
 
+// print title bar
 char const * const WORKMODE_STR[3] =
 {
     "GENERAL Mode",
