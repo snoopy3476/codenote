@@ -1,8 +1,11 @@
 cnote
+cnote-dynamic
 cnote.exe
+
 *.o
-*.wo
+*.a
 *.cnote
+
 passphrase.h
 passphrase.h_bak
 theme.h

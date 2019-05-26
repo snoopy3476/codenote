@@ -19,10 +19,11 @@ LD := $(BIN_PREFIX)ld
 override CFLAGS += -Wall
 
 # dir
-BIN := ../bin
-LIB := ../lib
+BIN_DIR := ../bin
+LIB_DIR := ../lib
 BYTEDATA := bytedata
 THEME := theme
+DIR_REQUIRED := $(BIN_DIR) $(LIB_DIR)
 
 # extensions
 EXT_C := c
@@ -34,10 +35,10 @@ EXT_A_W := win.a
 
 # targets
 TARGET_NAME := cnote
-TARGET := $(BIN)/$(TARGET_NAME)
-TARGET_LIB := $(LIB)/cnote.$(EXT_A)
+TARGET := $(BIN_DIR)/$(TARGET_NAME)
+TARGET_LIB := $(LIB_DIR)/cnote.$(EXT_A)
 TARGET_LIB_OBJ := $(TARGET_NAME:=.$(EXT_O))
-TARGET_D := $(BIN)/$(TARGET_NAME)-dynamic
+TARGET_D := $(BIN_DIR)/$(TARGET_NAME)-dynamic
 
 # sources
 SRCS := noteio.$(EXT_C) $(BYTEDATA)/bytedata.$(EXT_C)
@@ -73,6 +74,7 @@ $(TARGET): $(OBJ_MAIN) $(TARGET_LIB)
 
 # cnote static library
 $(TARGET_LIB): $(TARGET_LIB_OBJ)
+	$(MAKE) --no-print-directory  $(DIR_REQUIRED)
 	$(AR) rcs $@ $^
 
 # cnote static library object
@@ -93,6 +95,10 @@ noteio.win.o noteio.o: noteio.h $(BYTEDATA)/bytedata.h passphrase.h
 $(HEADERS_CUSTOMIZABLE):
 	cp -af $(@:.h=-default.h) $@
 
+# create new directories if not exist
+$(DIR_REQUIRED):
+	mkdir -p $@
+
 
 # clean all
 clean:
@@ -110,9 +116,10 @@ clean-linux:
 ### OTHER VERSIONS ###
 
 # Link dynamically with gcrypt
-dynamic: $(TARGET)-dynamic
+dynamic: $(TARGET_D)
 
-$(TARGET)-dynamic: $(OBJ_MAIN) $(OBJS)
+$(TARGET_D): $(OBJ_MAIN) $(OBJS)
+	$(MAKE) --no-print-directory  $(DIR_REQUIRED)
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS_D)
 
 
