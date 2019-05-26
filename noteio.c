@@ -1,15 +1,15 @@
 #include "noteio.h"
 #include "passphrase.h"
+#include "bytedata.h"
 
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
 
-#include "gcrypt.h"
+#include <gcrypt.h>
 
 #define AES_BLOCK_SIZE 16
-#define AES_SALT_SIZE 16
 #define AES_IV_SIZE 12
 #define ENCSIZE_SIZE 8
 #define BITS_PER_BYTE 8
@@ -20,70 +20,97 @@
 #define ALLOC_LEN (1 << 10)
 #define BUF_LEN_SHORT (1 << 7)
 
-#define encsize(size) ( ((size - 1) / AES_BLOCK_SIZE + 6) * AES_BLOCK_SIZE )
+#ifndef PASSPHRASE
+#define PASSPHRASE ""
+#define PASSPHRASE_LEN 0
+#endif
+
+#ifndef PASSPHRASE_LEN
+#define PASSPHRASE_LEN 0
+#endif
+
+
+#define pad_size(size) ((AES_BLOCK_SIZE - ((size) % AES_BLOCK_SIZE)) % AES_BLOCK_SIZE)
 #define min_size(x, y) ( ((x) < (y)) ? (x) : (y) )
 
 
 
-size_t encrypt(byte ** data, size_t data_size, byte * passphrase, size_t passphrase_len);
-size_t decrypt(byte ** data, size_t data_size, byte * passphrase, size_t passphrase_len);
+
+size_t encrypt(bytedata * contents, bytedata passphrase);
+size_t decrypt(bytedata * contents, bytedata passphrase);
 
 
-byte * set_passphrase_postfix(byte * passphrase, size_t passphrase_len);
-byte * encrypt_data_size(uint64_t size);
-uint64_t decrypt_data_size(byte * size);
+bytedata set_passphrase_postfix(bytedata * passphrase);
+byte * encode_data_size(uint64_t size);
+uint64_t decode_data_size(byte * size);
+bytedata load_file_data(FILE * fp, char const * const delimiters);
 
 
 
 
 
-size_t read_note(FILE * note, byte * passphrase, size_t passphrase_len, byte ** data_out)
+
+size_t read_note(FILE * note, const byte * passphrase, size_t passphrase_len, byte ** data_out)
 {
-    if (note == NULL || passphrase == NULL)
+    if (note == NULL || passphrase == NULL || passphrase_len == 0)
 	return 0;
 
+
     
-    byte * note_data;
-    size_t file_size = load_file_data(note, &note_data, NULL);
+    // init passphrase object
+    bytedata passphrase_bytedata = set_bytedata(NULL, passphrase, passphrase_len);
+    if (passphrase_bytedata == NULL)
+	return 0;
+    
     
 
-    size_t result_size = decrypt(&note_data, file_size, passphrase, passphrase_len);
+    // laod note data and decrypt
+    bytedata note_bytedata = load_file_data(note, NULL);
+    size_t result_size = decrypt(&note_bytedata, passphrase_bytedata);
+
+    if (result_size == 0 || note_bytedata == NULL)
+	return 0;
 
 
 
-    // pass data to data_out ptr if data_out != NULL
-    if (result_size != 0 && data_out != NULL)
-    {
-	*data_out = note_data;
-    }
+    // copy the result to data_out
+    *data_out = (byte *) malloc(get_bytedata_size(note_bytedata));
+    if (*data_out == NULL)
+	return 0;
 
-    // print data if data_out == NULL
-    else
-    {
-	for (size_t index = 0; index < result_size; index++)
-	    printf("%c", note_data[index]);
-	
-	free(note_data);
-    }
+    memcpy(*data_out, get_bytedata(note_bytedata), get_bytedata_size(note_bytedata));
+    free_bytedata(note_bytedata);
 
+
+    
     return result_size;
 }
 
-size_t write_note(FILE * note, byte * passphrase, size_t passphrase_len, byte * data, size_t data_len)
+size_t write_note(FILE * note, const byte * passphrase, size_t passphrase_len, const byte * data, size_t data_len)
 {
     if (note == NULL || passphrase == NULL || data == NULL || data_len == 0)
 	return 0;
 
     
-    byte * note_data = (byte *) malloc(sizeof(byte) * data_len);
-    memcpy(note_data, data, data_len);
+    
+    // init objects
+    bytedata passphrase_bytedata = set_bytedata(NULL, passphrase, passphrase_len);
+    bytedata note_bytedata = set_bytedata(NULL, data, data_len);
+    if (passphrase_bytedata == NULL || note_bytedata == NULL)
+	return 0;
+    
+
+
+    // encrypt
+    size_t result_size = encrypt(&note_bytedata, passphrase_bytedata);
+
+
+
+    // write the result to file pointer
+    fwrite(note_bytedata->data, 1, result_size, note);
+    free(note_bytedata);
 
     
-    size_t result_size = encrypt(&note_data, data_len, passphrase, passphrase_len);
-    fwrite(note_data, 1, result_size, note);
-    
-
-    free(note_data);
 
     return result_size;
 }
@@ -92,24 +119,14 @@ size_t write_note(FILE * note, byte * passphrase, size_t passphrase_len, byte * 
 
 
 
-
-size_t encrypt(byte ** data, size_t data_size, byte * passphrase, size_t passphrase_len)
+size_t encrypt(bytedata * contents, bytedata passphrase)
 {
-    if (data == NULL || *data == NULL || passphrase == NULL)
+    if (contents == NULL || get_bytedata(*contents) == NULL || get_bytedata_size(*contents) == 0 || get_bytedata(passphrase) == NULL)
 	return 0;
 
 
 
-
-    // preprocess passphrase with postfix
-    byte * passphrase_processed = set_passphrase_postfix(passphrase, passphrase_len);
-    if (passphrase_processed == NULL)
-	return 0;
-
     
-
-    
-
     // init gcrypt //
     gcry_cipher_hd_t handle;
 
@@ -117,73 +134,86 @@ size_t encrypt(byte ** data, size_t data_size, byte * passphrase, size_t passphr
     gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
     gcry_cipher_open(&handle, GCRY_CIPHER, GCRY_MODE, 0);
 
+
     
     
-    // append data size info //
-    size_t encdata_size = encsize(data_size);
-    byte * data_realloc = (byte *) realloc(*data, sizeof(byte) * encdata_size);
-    if (data_realloc == NULL)
-    {
+    // init & set - padding / data size / salt / iv / AAD / key //
+    byte padding[AES_BLOCK_SIZE];
+    gcry_create_nonce(padding, AES_BLOCK_SIZE);
+    
+    size_t data_size_orig = get_bytedata_size(*contents);
+    
+    byte salt[AES_BLOCK_SIZE];
+    gcry_create_nonce(salt, AES_BLOCK_SIZE);
+
+    byte iv[AES_BLOCK_SIZE];
+    gcry_create_nonce(iv, AES_BLOCK_SIZE);
+    
+    byte aad[AES_BLOCK_SIZE];
+    gcry_create_nonce(aad, AES_BLOCK_SIZE);
+
+    // key
+    bytedata passphrase_processed = set_passphrase_postfix(&passphrase);
+    if (passphrase_processed == NULL)
 	return 0;
-    }
-    else
-    {
-	*data = data_realloc;
-
-	byte * encdata_size_ptr = *data + encdata_size - 5*AES_BLOCK_SIZE;
-	memcpy(encdata_size_ptr,
-	       encrypt_data_size(data_size),
-	       sizeof(byte) * AES_BLOCK_SIZE);
-    }
-
     
-    // init key, salt //
-    byte * salt_ptr = *data + encdata_size - 3*AES_BLOCK_SIZE;
-    gcry_create_nonce(salt_ptr, AES_SALT_SIZE);
     size_t key_len = gcry_cipher_get_algo_keylen(GCRY_CIPHER);
     byte * key = (byte *) malloc(sizeof(byte) * key_len);
-    gcry_kdf_derive(passphrase_processed, passphrase_len + PASSPHRASE_LEN, GCRY_KDF_PBKDF2, GCRY_CIPHER, salt_ptr, AES_SALT_SIZE, 16, key_len, key);
+    gcry_kdf_derive(passphrase_processed, get_bytedata_size(passphrase_processed), GCRY_KDF_PBKDF2, GCRY_CIPHER, salt, AES_BLOCK_SIZE, 16, key_len, key);
+    free_bytedata(passphrase_processed);
+
+    
+
+    
+    // append & setup & encrypt //
+    
+    // append padding / data size
+    int append_err = 1;
+    append_err &= (append_bytedata(contents, padding, pad_size(get_bytedata_size(*contents)) ) ? 1 : 0);
+    append_err &= (append_bytedata(contents, encode_data_size(data_size_orig), AES_BLOCK_SIZE) ? 1 : 0);
+
+    // setup
     gcry_cipher_setkey(handle, key, key_len);
-    free(passphrase_processed);
+    gcry_cipher_setiv(handle, iv, AES_IV_SIZE);
+    gcry_cipher_authenticate(handle, aad, AES_BLOCK_SIZE);
+
+    // encrypt
+    gcry_cipher_encrypt(handle, get_bytedata(*contents), get_bytedata_size(*contents), NULL, 0);
+    free(key);
+
+    // append - salt / iv / ADD / tag
+    byte tag[AES_BLOCK_SIZE];
+    gcry_cipher_gettag(handle, tag, AES_BLOCK_SIZE);
+
+    append_err &= (append_bytedata(contents, salt, AES_BLOCK_SIZE) ? 1 : 0);
+    append_err &= (append_bytedata(contents, iv, AES_BLOCK_SIZE) ? 1 : 0);
+    append_err &= (append_bytedata(contents, aad, AES_BLOCK_SIZE) ? 1 : 0);
+    append_err &= (append_bytedata(contents, tag, AES_BLOCK_SIZE) ? 1 : 0);
 
 
-    // init iv , AAD //
-    byte * iv_ptr = *data + encdata_size - 4*AES_BLOCK_SIZE;
-    gcry_create_nonce(iv_ptr, AES_BLOCK_SIZE);
-    gcry_cipher_setiv(handle, iv_ptr, AES_IV_SIZE);
-    byte * auth_ptr = *data + encdata_size - 2*AES_BLOCK_SIZE;
-    gcry_create_nonce(auth_ptr, AES_BLOCK_SIZE);
-    gcry_cipher_authenticate(handle, auth_ptr, AES_BLOCK_SIZE);
-
-
-    // encrypt //
-    gcry_cipher_encrypt(handle, *data, encdata_size - 4*AES_BLOCK_SIZE, NULL, 0);
-    gcry_cipher_gettag(handle, *data + encdata_size - AES_BLOCK_SIZE, AES_BLOCK_SIZE);
-
+    
 
     // close gcrypt //
     gcry_cipher_close(handle);
-    free(key);
 
-    return encdata_size;
+
+    if (append_err == 0)
+	return 0;
+    else
+	return get_bytedata_size(*contents);
 }
 
 
-size_t decrypt(byte ** data, size_t data_size, byte * passphrase, size_t passphrase_len)
+size_t decrypt(bytedata * contents, bytedata passphrase)
 {
-    if (data == NULL || *data == NULL || passphrase == NULL || data_size < AES_BLOCK_SIZE)
+    if (contents == NULL || get_bytedata(*contents) == NULL || get_bytedata(passphrase) == NULL)
+	return 0;
+
+    if (get_bytedata_size(*contents) % AES_BLOCK_SIZE != 0)
 	return 0;
 
 
 
-
-    // preprocess passphrase with postfix
-    byte * passphrase_processed = set_passphrase_postfix(passphrase, passphrase_len);
-    if (passphrase_processed == NULL)
-	return 0;
-    
-
-    
 
     // init gcrypt //
     gcry_cipher_hd_t handle;
@@ -193,51 +223,76 @@ size_t decrypt(byte ** data, size_t data_size, byte * passphrase, size_t passphr
     gcry_cipher_open(&handle, GCRY_CIPHER, GCRY_MODE, 0);
 
 
-    // init key //
-    byte * salt_ptr = *data + data_size - 3*AES_BLOCK_SIZE;
+
+    
+    // init, pop & set - tag / AAD / iv / salt / key //
+    int pop_err = 1;
+    
+    byte tag[AES_BLOCK_SIZE];
+    pop_err &= (pop_bytedata(contents, tag, AES_BLOCK_SIZE) ? 1 : 0);
+    
+    byte aad[AES_BLOCK_SIZE];
+    pop_err &= (pop_bytedata(contents, aad, AES_BLOCK_SIZE) ? 1 : 0);
+    
+    byte iv[AES_BLOCK_SIZE];
+    pop_err &= (pop_bytedata(contents, iv, AES_BLOCK_SIZE) ? 1 : 0);
+    
+    byte salt[AES_BLOCK_SIZE];
+    pop_err &= (pop_bytedata(contents, salt, AES_BLOCK_SIZE) ? 1 : 0);
+
+    if (pop_err == 0)
+	return 0;
+
+    // key
+    bytedata passphrase_processed = set_passphrase_postfix(&passphrase);
+    if (passphrase_processed == NULL)
+	return 0;
+    
     size_t key_len = gcry_cipher_get_algo_keylen(GCRY_CIPHER);
     byte * key = (byte *) malloc(sizeof(byte) * key_len);
-    gcry_kdf_derive(passphrase_processed, passphrase_len + PASSPHRASE_LEN, GCRY_KDF_PBKDF2, GCRY_CIPHER, salt_ptr, AES_SALT_SIZE, 16, key_len, key);
+    gcry_kdf_derive(passphrase_processed, get_bytedata_size(passphrase_processed), GCRY_KDF_PBKDF2, GCRY_CIPHER, salt, AES_BLOCK_SIZE, 16, key_len, key);
+    free_bytedata(passphrase_processed);
+
+    
+
+
+    // setup & decrypt //
+
+    // setup
     gcry_cipher_setkey(handle, key, key_len);
-    free(passphrase_processed);
+    gcry_cipher_setiv(handle, iv, AES_IV_SIZE);
+    gcry_cipher_authenticate(handle, aad, AES_BLOCK_SIZE);
 
-
-    // init iv //
-    gcry_cipher_setiv(handle, *data + data_size - 4*AES_BLOCK_SIZE, AES_IV_SIZE);
-    gcry_cipher_authenticate(handle, *data + data_size - 2*AES_BLOCK_SIZE, AES_BLOCK_SIZE);
-
-
-    // decrypt //
-    gcry_cipher_decrypt(handle, *data, data_size - 4*AES_BLOCK_SIZE, NULL, 0);
+    // decrypt
+    gcry_cipher_decrypt(handle, get_bytedata(*contents), get_bytedata_size(*contents), NULL, 0);
     free(key);
-    if (gcry_cipher_checktag(handle, *data + data_size - AES_BLOCK_SIZE, AES_BLOCK_SIZE))
+    if (gcry_cipher_checktag(handle, tag, AES_BLOCK_SIZE))
 	return 0;
 
 
-    // get original data size //
-    size_t origdata_size = decrypt_data_size(*data + data_size - 5*AES_BLOCK_SIZE);
-    // check if decrypted size is valid
-    if (origdata_size == 0)
+
+    
+    // decode original data size //
+
+    // pop data size
+    byte data_orig_size_encoded[AES_BLOCK_SIZE];
+    pop_bytedata(contents, data_orig_size_encoded, AES_BLOCK_SIZE);
+
+    // decode
+    size_t data_orig_size = decode_data_size(data_orig_size_encoded);
+    if (data_orig_size == 0)
 	return 0;
 	
+    // pop padding to fit 
+    pop_bytedata(contents, NULL, pad_size(data_orig_size));
 
-    // change allocated size to fit //
-    byte * data_realloc = (byte *) realloc(*data, sizeof(byte) * (origdata_size + 1));
-    if (data_realloc == NULL)
-	return 0;
-    else
-	*data = data_realloc;
+
     
-    // Set '\0' after the last byte of the data
-    // to make printf easier if data are string
-    (*data)[origdata_size] = '\0';
-
-
     
     // close gcrypt //
     gcry_cipher_close(handle);
 
-    return origdata_size;
+    return data_orig_size;
 }
 
 
@@ -245,24 +300,21 @@ size_t decrypt(byte ** data, size_t data_size, byte * passphrase, size_t passphr
 
 
 
-byte * set_passphrase_postfix(byte * passphrase, size_t passphrase_len)
+bytedata set_passphrase_postfix(bytedata * passphrase)
 {
-    if (passphrase == NULL)
+    if (passphrase == NULL || *passphrase == NULL || get_bytedata(*passphrase) == NULL)
 	return NULL;
-    
-    byte * passphrase_processed = (byte *) malloc(sizeof(byte) * (passphrase_len + PASSPHRASE_LEN));
+
+    bytedata passphrase_processed = append_bytedata(passphrase, (byte *) PASSPHRASE, PASSPHRASE_LEN);
     if (passphrase_processed == NULL)
 	return NULL;
-
+    *passphrase = passphrase_processed;
     
-    memcpy(passphrase_processed, passphrase, passphrase_len);
-    memcpy(passphrase_processed + passphrase_len, PASSPHRASE, PASSPHRASE_LEN);
-    
-    return passphrase_processed;
+    return *passphrase;
 }
 
 
-byte * encrypt_data_size(uint64_t size)
+byte * encode_data_size(uint64_t size)
 {
     static byte result[AES_BLOCK_SIZE];
     
@@ -273,7 +325,7 @@ byte * encrypt_data_size(uint64_t size)
     return result;
 }
 
-uint64_t decrypt_data_size(byte * size)
+uint64_t decode_data_size(byte * size)
 {
     if (size == NULL)
 	return 0;
@@ -290,25 +342,23 @@ uint64_t decrypt_data_size(byte * size)
 }
 
 
-size_t load_file_data(FILE * fp, byte ** out, char const * const delimiters)
+bytedata load_file_data(FILE * fp, char const * const delimiters)
 {
-    if (out == NULL)
-	return 0;
-    
     if (fp == NULL)
-    {
-	*out = NULL;
-	return 0;
-    }
+	return NULL;
 
+
+    
+    
+    // init
     byte * note_data = (byte *) malloc(sizeof(byte) * ALLOC_LEN),
 	* note_data_realloc = NULL;
     size_t input_size = 0, alloc_step = 0;
 
+    
 
     
     // set delimiter length
-    
     size_t delim_len;
     if (delimiters != NULL)
     {
@@ -318,12 +368,14 @@ size_t load_file_data(FILE * fp, byte ** out, char const * const delimiters)
 	    delim_len = strnlen(delimiters, BUF_LEN_SHORT);
     }
     else
+    {
 	delim_len = 0;
+    }
+
 
     
 
-    // get input
-
+    // get input //
 
     // if stdin input
     if (fp == stdin)
@@ -373,26 +425,9 @@ size_t load_file_data(FILE * fp, byte ** out, char const * const delimiters)
 	}
     }
 
-
-
-    if (out != NULL)
-    {
-	*out = NULL;
-	
-	if (input_size != 0 && note_data != NULL)
-	    *out = realloc(note_data, sizeof(byte) * input_size + 1);
-	
-	if (*out == NULL)
-	    free(note_data);
-	else
-	    (*out)[input_size] = '\0'; // NULL termination for string input
-    }
-    else
-    {
-	free(note_data);
-    }
-
     
 
-    return input_size;
+
+    // init bytedata struct for return using the result
+    return set_bytedata(NULL, note_data, input_size);
 }

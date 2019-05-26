@@ -7,11 +7,7 @@
 #define GCRY_MODE GCRY_CIPHER_MODE_GCM
 
 
-typedef unsigned char byte;
-
-size_t read_note(FILE * note, unsigned char * passphrase, size_t passphrase_len, byte ** data_out);
-size_t write_note(FILE * note, unsigned char * passphrase, size_t passphrase_len, byte * data, size_t data_len);
-size_t load_file_data(FILE * fp, byte ** out, char const * const delimiters);
-
+size_t read_note(FILE * note, const unsigned char * passphrase, size_t passphrase_len, unsigned char ** data_out);
+size_t write_note(FILE * note, const unsigned char * passphrase, size_t passphrase_len, const unsigned char * data, size_t data_len);
 
 #endif

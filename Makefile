@@ -3,7 +3,7 @@ MAKE := make
 override CFLAGS += -Wall
 
 TARGET := cnote
-SRC := codenote.c noteio.c
+SRC := codenote.c noteio.c bytedata.c
 OBJS := $(SRC:.c=.o)
 LIBS := -l:libgcrypt.a -l:libgpg-error.a
 LIBS_D := -lgcrypt
@@ -31,12 +31,13 @@ $(TARGET).dynamic: $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS_D)
 
 
-
-codenote.o codenote.wo: codenote.c noteio.h ansiseq.h ansicolor.h theme.h
+%.o %.wo: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-noteio.o noteio.wo: noteio.c noteio.h passphrase.h
-	$(CC) $(CFLAGS) -c $< -o $@
+codenote.o codenote.wo: noteio.h ansiseq.h ansicolor.h theme.h
+noteio.o noteio.wo: noteio.h bytedata.h passphrase.h
+bytedata.o bytedata.wo: bytedata.h
+
 
 
 $(HEADERS_CUSTOMIZABLE):
@@ -54,7 +55,8 @@ win:
 
 # For Cygwin gcc in Windows
 cyg:
-	$(MAKE) --no-print-directory LIBS="$(LIBS_CYG)"
+	$(MAKE) --no-print-directory \
+		LIBS="$(LIBS_CYG)"
 
 
 

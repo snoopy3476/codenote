@@ -1,6 +1,7 @@
 #include "noteio.h"
 #include "ansiseq.h"
 #include "theme.h"
+#include "bytedata.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +31,14 @@
 typedef enum workmode_t {WM_NONE, WM_ENCRYPT, WM_DECRYPT} workmode_t;
 typedef enum fopenmode_t {FM_READ = 0, FM_WRITE} fopenmode_t;
 
+typedef unsigned char byte;
+
+typedef struct data_t
+{
+    byte * data;
+    size_t size;
+} data_t;
+
 
 
 
@@ -39,6 +48,9 @@ byte * get_data(const char * prompt, byte * data, size_t * data_size_out, int is
 size_t get_input(const char * prompt, byte ** buf_out, int is_retype);
 
 void print_title(workmode_t workmode, char * title);
+
+bytedata load_file_data(FILE * fp, char const * const delimiters);
+size_t load_file_data_wrapper(FILE * fp, byte ** out, char const * const delimiters);
 
 
 
@@ -275,13 +287,13 @@ int main(int argc, char* argv[])
     // error on processing
     else
     {
-	printf(COLOR(COLOR_WARNING) " *** %s *** " FILL_LINE "\n" COLOR(CO_DEFAULT), error_msg);
+	printf(COLOR(COLOR_WARNING) " *** %s *** " FILL_LINE COLOR(CO_DEFAULT) "\n", error_msg);
 	footer_line = ""; // print red line instead of data line
     }
 
     // footer bar
     if (interactive)
-	printf("%s" COLOR(COLOR_TITLE) FILL_LINE "\n" COLOR(CO_DEFAULT), footer_line);
+	printf("%s" COLOR(COLOR_TITLE) FILL_LINE COLOR(CO_DEFAULT) "\n", footer_line);
 
 
 
@@ -404,7 +416,7 @@ size_t get_input(const char * prompt, byte ** buf_out, int is_retype)
 	// first input
 	printf("%s" COLOR(COLOR_DATA_BG) "%s:" COLOR(CO_DEFAULT) " ", password_mismatch, prompt);
 	fflush(stdout); // always print prompt above
-	buf_len_tmp[0] = load_file_data(stdin, &buf_tmp[0], "\0\n");
+	buf_len_tmp[0] = load_file_data_wrapper(stdin, &buf_tmp[0], "\0\n");
 	clear(0, 1);
 
 	// no retype and recheck if set
@@ -417,7 +429,7 @@ size_t get_input(const char * prompt, byte ** buf_out, int is_retype)
 	// second input
 	printf("%s"  COLOR(COLOR_DATA_BG) "Retype %s:" COLOR(CO_DEFAULT) " ", password_mismatch, prompt);
 	fflush(stdout); // always print prompt above
-	buf_len_tmp[1] = load_file_data(stdin, &buf_tmp[1], "\0\n");
+	buf_len_tmp[1] = load_file_data_wrapper(stdin, &buf_tmp[1], "\0\n");
 	clear(0, 1);
 
 	if (buf_len_tmp[0] == buf_len_tmp[1] &&
@@ -455,4 +467,20 @@ void print_title(workmode_t workmode, char * title)
     if (title != NULL)
 	printf("- " COLOR(COLOR_TITLE_FILE_NAME) "<%s>" COLOR(COLOR_TITLE), title);
     printf(FILL_LINE COLOR(CO_DEFAULT) "\n");
+}
+
+
+
+
+// load file data wrapper
+size_t load_file_data_wrapper(FILE * fp, byte ** out, char const * const delimiters)
+{
+    bytedata file_data;
+    file_data = load_file_data(fp, delimiters);
+
+
+    *out = (byte *) malloc(sizeof(byte) * get_bytedata_size(file_data));
+    memcpy(*out, get_bytedata(file_data), get_bytedata_size(file_data));
+
+    return get_bytedata_size(file_data);
 }
