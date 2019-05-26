@@ -1,7 +1,7 @@
 #include "noteio.h"
-#include "ansiseq.h"
-#include "theme.h"
-#include "bytedata.h"
+#include "theme/ansiseq.h"
+#include "theme/theme.h"
+#include "bytedata/bytedata.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -306,6 +306,17 @@ int main(int argc, char* argv[])
     free(passphrase);
     free(data);
 
+
+
+
+
+    // prevent automatic program exit if interactive
+    if (interactive)
+    {
+	printf("Press Enter to Exit...");
+	byte buf[BUF_LEN];
+	fgets((char *)buf, BUF_LEN, stdin);
+    }
 
     if (processed_size != 0)
 	return 0;

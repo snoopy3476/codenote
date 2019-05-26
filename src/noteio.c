@@ -1,6 +1,6 @@
 #include "noteio.h"
 #include "passphrase.h"
-#include "bytedata.h"
+#include "bytedata/bytedata.h"
 
 #include <stdlib.h>
 #include <stdint.h>
