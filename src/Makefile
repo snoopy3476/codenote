@@ -23,7 +23,6 @@ BIN_DIR := ../bin
 LIB_DIR := ../lib
 BYTEDATA := bytedata
 THEME := theme
-DIR_REQUIRED := $(BIN_DIR) $(LIB_DIR)
 
 # extensions
 EXT_C := c
@@ -69,12 +68,13 @@ all: $(TARGET)
 
 # cnote binary
 $(TARGET): $(OBJ_MAIN) $(TARGET_LIB)
+	mkdir -p $(BIN_DIR)
 	$(CC) $(CFLAGS) $(OBJ_MAIN) -o $@ $(TARGET_LIB)
 
 
 # cnote static library
 $(TARGET_LIB): $(TARGET_LIB_OBJ)
-	$(MAKE) --no-print-directory  $(DIR_REQUIRED)
+	mkdir -p $(LIB_DIR)
 	$(AR) rcs $@ $^
 
 # cnote static library object
@@ -94,10 +94,6 @@ noteio.win.o noteio.o: noteio.h $(BYTEDATA)/bytedata.h passphrase.h
 # get new headers from default headers if not exist
 $(HEADERS_CUSTOMIZABLE):
 	cp -af $(@:.h=-default.h) $@
-
-# create new directories if not exist
-$(DIR_REQUIRED):
-	mkdir -p $@
 
 
 # clean all
@@ -119,8 +115,7 @@ clean-linux:
 dynamic: $(TARGET_D)
 
 $(TARGET_D): $(OBJ_MAIN) $(OBJS)
-	$(MAKE) --no-print-directory  $(DIR_REQUIRED)
-	$(CC) $(CFLAGS) $^ -o $@ $(LIBS_D)
+	$(CC) $(LDFLAGS) $^ -o $@ $(CGRY_LIB_OPT) $(LIBS_D)
 
 
 # Windows binary
